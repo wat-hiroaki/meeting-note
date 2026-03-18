@@ -1,8 +1,10 @@
 import { globalShortcut, BrowserWindow } from 'electron'
 
+const mod = process.platform === 'darwin' ? 'Cmd' : 'Ctrl'
+
 export function registerHotkeys(mainWindow: BrowserWindow): void {
   // Toggle window visibility
-  globalShortcut.register('Ctrl+Shift+M', () => {
+  globalShortcut.register(`${mod}+Shift+M`, () => {
     if (mainWindow.isVisible()) {
       mainWindow.hide()
     } else {
@@ -12,17 +14,17 @@ export function registerHotkeys(mainWindow: BrowserWindow): void {
   })
 
   // Start recording
-  globalShortcut.register('Ctrl+Shift+R', () => {
+  globalShortcut.register(`${mod}+Shift+R`, () => {
     mainWindow.webContents.send('hotkey:action', 'record')
   })
 
   // Pause/Resume
-  globalShortcut.register('Ctrl+Shift+P', () => {
+  globalShortcut.register(`${mod}+Shift+P`, () => {
     mainWindow.webContents.send('hotkey:action', 'pause')
   })
 
   // Stop
-  globalShortcut.register('Ctrl+Shift+S', () => {
+  globalShortcut.register(`${mod}+Shift+S`, () => {
     mainWindow.webContents.send('hotkey:action', 'stop')
   })
 }

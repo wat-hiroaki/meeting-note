@@ -1,6 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { StatusIndicator } from './StatusIndicator'
-import type { RecordingStatus } from './StatusIndicator'
 import { Timer } from './Timer'
 import { ControlButton } from './ControlButton'
 import { SettingsPanel } from './SettingsPanel'
@@ -68,13 +67,14 @@ function CloseIcon(): React.JSX.Element {
 }
 
 export function FloatingBar(): React.JSX.Element {
-  const { status, seconds, start, pause, resume, stop } = useRecording()
+  const { status, seconds, error, outputPath, start, pause, resume, stop, dismiss } = useRecording()
   const [showSettings, setShowSettings] = useState(false)
 
   const handlePrimaryAction = useCallback((): void => {
     switch (status) {
       case 'idle':
       case 'done':
+      case 'error':
         start()
         break
       case 'recording':
@@ -94,8 +94,24 @@ export function FloatingBar(): React.JSX.Element {
     window.electronAPI.closeWindow()
   }, [])
 
+  // Determine window mode
+  const showExpandedPanel = status === 'processing' || status === 'done' || status === 'error'
+
+  useEffect(() => {
+    if (showSettings) {
+      window.electronAPI.setWindowMode('settings')
+    } else if (showExpandedPanel) {
+      window.electronAPI.setWindowMode('expanded')
+    } else {
+      window.electronAPI.setWindowMode('bar')
+    }
+  }, [showSettings, showExpandedPanel])
+
   const canStop = status === 'recording' || status === 'paused'
   const isProcessing = status === 'processing'
+  const isActive = status === 'recording' || status === 'paused'
+
+  const primaryLabel = status === 'recording' ? 'Pause' : status === 'paused' ? 'Resume' : 'Record'
 
   return (
     <div className="w-full p-1">
@@ -103,46 +119,49 @@ export function FloatingBar(): React.JSX.Element {
         {/* Status */}
         <StatusIndicator status={status} />
 
-        {/* Timer */}
-        {status !== 'idle' && <Timer seconds={seconds} />}
+        {/* Timer — only when active */}
+        {isActive && <Timer seconds={seconds} />}
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Controls */}
+        {/* Recording controls */}
         <div className="flex items-center gap-1">
           {/* Primary action: Record / Pause / Resume */}
           <ControlButton
             onClick={handlePrimaryAction}
-            title={status === 'recording' ? 'Pause' : status === 'paused' ? 'Resume' : 'Record'}
+            title={primaryLabel}
             disabled={isProcessing}
-            variant={status === 'idle' || status === 'done' ? 'danger' : 'default'}
+            variant={status === 'idle' || status === 'done' || status === 'error' ? 'danger' : 'default'}
           >
             {status === 'recording' ? <PauseIcon /> : status === 'paused' ? <ResumeIcon /> : <RecordIcon />}
           </ControlButton>
 
-          {/* Stop */}
-          <ControlButton
-            onClick={stop}
-            title="Stop & Process"
-            disabled={!canStop}
-          >
-            <StopIcon />
-          </ControlButton>
+          {/* Stop — only shown when recording/paused */}
+          {canStop && (
+            <ControlButton onClick={stop} title="Stop & Process">
+              <StopIcon />
+            </ControlButton>
+          )}
+        </div>
 
-          {/* Divider */}
-          <div className="w-px h-4 bg-white/10 mx-1" />
+        {/* Divider */}
+        <div className="w-px h-4 bg-white/10" />
 
-          {/* Settings */}
-          <ControlButton
-            onClick={() => setShowSettings(!showSettings)}
-            title="Settings"
-            disabled={isProcessing}
-          >
-            <SettingsIcon />
-          </ControlButton>
+        {/* Settings */}
+        <ControlButton
+          onClick={() => setShowSettings(!showSettings)}
+          title="Settings"
+          disabled={isProcessing}
+        >
+          <SettingsIcon />
+        </ControlButton>
 
-          {/* Window controls */}
+        {/* Divider */}
+        <div className="w-px h-4 bg-white/[0.06]" />
+
+        {/* Window controls */}
+        <div className="flex items-center gap-0.5">
           <ControlButton onClick={handleMinimize} title="Minimize">
             <MinimizeIcon />
           </ControlButton>
@@ -152,8 +171,10 @@ export function FloatingBar(): React.JSX.Element {
         </div>
       </div>
 
-      {/* Processing Status */}
-      {status === 'processing' && <ProcessingStatus />}
+      {/* Processing / Done / Error panel */}
+      {showExpandedPanel && !showSettings && (
+        <ProcessingStatus outputPath={outputPath} error={error} onDismiss={dismiss} />
+      )}
 
       {/* Settings Panel */}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}

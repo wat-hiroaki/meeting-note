@@ -28,19 +28,43 @@ function getTempDir(): string {
   return dir
 }
 
+const isMac = process.platform === 'darwin'
+
 export function getAudioDevices(): string[] {
   try {
-    const result = execSync('ffmpeg -list_devices true -f dshow -i dummy 2>&1', {
+    const cmd = isMac
+      ? 'ffmpeg -f avfoundation -list_devices true -i "" 2>&1'
+      : 'ffmpeg -list_devices true -f dshow -i dummy 2>&1'
+    const result = execSync(cmd, {
       encoding: 'utf-8',
-      timeout: 5000
+      timeout: 5000,
+      windowsHide: true
     })
-    // ffmpeg outputs to stderr, but execSync with 2>&1 captures it
-    return parseDeviceList(result)
+    return isMac ? parseMacDeviceList(result) : parseDeviceList(result)
   } catch (err: unknown) {
     // ffmpeg always exits with error when listing devices
     const output = (err as { stdout?: string; stderr?: string }).stderr || (err as { stdout?: string }).stdout || ''
-    return parseDeviceList(output)
+    return isMac ? parseMacDeviceList(output) : parseDeviceList(output)
   }
+}
+
+function parseMacDeviceList(output: string): string[] {
+  const devices: string[] = []
+  const lines = output.split('\n')
+  let isAudio = false
+
+  for (const line of lines) {
+    if (line.includes('AVFoundation audio devices:')) {
+      isAudio = true
+      continue
+    }
+    if (isAudio && line.includes('AVFoundation video devices:')) break
+    if (isAudio) {
+      const match = line.match(/\[(\d+)] (.+)/)
+      if (match) devices.push(match[2].trim())
+    }
+  }
+  return devices
 }
 
 function parseDeviceList(output: string): string[] {
@@ -79,21 +103,31 @@ function startSegment(): string {
   const segmentPath = join(state.outputDir, `segment_${state.currentSegment}.wav`)
   state.segments.push(segmentPath)
 
-  // Use WASAPI loopback for system audio capture on Windows
-  const args = [
-    '-f', 'dshow',
-    '-i', `audio=${state.device === 'default' ? getDefaultDevice() : state.device}`,
-    '-ac', '1',           // mono
-    '-ar', '16000',       // 16kHz for Whisper
-    '-acodec', 'pcm_s16le',
-    '-y',                 // overwrite
-    segmentPath
-  ]
+  const device = state.device === 'default' ? getDefaultDevice() : state.device
+
+  const args = isMac
+    ? [
+        '-f', 'avfoundation',
+        '-i', `:${device}`,
+        '-ac', '1',
+        '-ar', '16000',
+        '-acodec', 'pcm_s16le',
+        '-y',
+        segmentPath
+      ]
+    : [
+        '-f', 'dshow',
+        '-i', `audio=${device}`,
+        '-ac', '1',           // mono
+        '-ar', '16000',       // 16kHz for Whisper
+        '-acodec', 'pcm_s16le',
+        '-y',                 // overwrite
+        segmentPath
+      ]
 
   state.process = spawn('ffmpeg', args)
 
   state.process.stderr?.on('data', (data: Buffer) => {
-    // FFmpeg outputs progress to stderr
     const msg = data.toString()
     if (msg.includes('Error') || msg.includes('error')) {
       console.error('[Recorder] FFmpeg error:', msg)
@@ -104,12 +138,26 @@ function startSegment(): string {
     console.log(`[Recorder] FFmpeg segment ${state.currentSegment} exited with code ${code}`)
   })
 
+  state.process.on('error', (err) => {
+    console.error('[Recorder] FFmpeg spawn error:', err.message)
+    state.process = null
+  })
+
   return segmentPath
 }
 
 function getDefaultDevice(): string {
   const devices = getAudioDevices()
-  // Prefer stereo mix or virtual cable for system audio
+  if (isMac) {
+    // Prefer BlackHole or Soundflower for system audio loopback on macOS
+    const preferred = devices.find(d =>
+      d.toLowerCase().includes('blackhole') ||
+      d.toLowerCase().includes('soundflower') ||
+      d.toLowerCase().includes('loopback')
+    )
+    return preferred || devices[0] || '0'
+  }
+  // Windows: prefer stereo mix or virtual cable for system audio
   const preferred = devices.find(d =>
     d.toLowerCase().includes('stereo mix') ||
     d.toLowerCase().includes('virtual cable') ||

@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import { useConfig } from '../hooks/useConfig'
 
 interface SettingsPanelProps {
@@ -64,32 +65,64 @@ function Toggle({ checked, onChange, label }: {
   )
 }
 
+function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      <span className="text-white/50 text-[10px] uppercase tracking-wider">{title}</span>
+      {children}
+    </div>
+  )
+}
+
+const isMac = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
+const mod = isMac ? 'Cmd' : 'Ctrl'
+
 export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Element {
   const { config, updateConfig, loading } = useConfig()
+  const [saved, setSaved] = useState(false)
+
+  const handleUpdate = useCallback((updates: Parameters<typeof updateConfig>[0]): void => {
+    updateConfig(updates)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }, [updateConfig])
 
   if (loading) {
     return (
-      <div className="glass-bar rounded-2xl p-4 mt-1">
+      <div className="rounded-2xl p-4 mt-1 solid-panel">
         <span className="text-white/50 text-xs">Loading...</span>
       </div>
     )
   }
 
   return (
-    <div className="glass-bar rounded-2xl p-4 mt-1 space-y-3 max-h-[400px] overflow-y-auto no-drag">
+    <div className="rounded-2xl p-4 mt-1 space-y-3 max-h-[400px] overflow-y-auto no-drag solid-panel">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-white/90 text-sm font-medium">Settings</span>
-        <button onClick={onClose} className="text-white/40 hover:text-white/80 text-xs">Close</button>
+        <div className="flex items-center gap-2">
+          <span className="text-white/90 text-sm font-medium">Settings</span>
+          {saved && (
+            <span className="text-green-400 text-[10px] animate-pulse">Saved</span>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+          title="Close settings"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <line x1="1" y1="1" x2="9" y2="9" />
+            <line x1="9" y1="1" x2="1" y2="9" />
+          </svg>
+        </button>
       </div>
 
       {/* Transcription */}
-      <div className="space-y-2">
-        <span className="text-white/50 text-[10px] uppercase tracking-wider">Transcription</span>
+      <Section title="Transcription">
         <SettingRow label="Mode">
           <Select
             value={config.transcription.mode}
-            onChange={(v) => updateConfig({ transcription: { ...config.transcription, mode: v } })}
+            onChange={(v) => handleUpdate({ transcription: { ...config.transcription, mode: v } })}
             options={[
               { value: 'local', label: 'Local (faster-whisper)' },
               { value: 'api', label: 'OpenAI Whisper API' },
@@ -101,7 +134,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <SettingRow label="OpenAI Key">
             <Input
               value={config.transcription.apiKey || ''}
-              onChange={(v) => updateConfig({ transcription: { ...config.transcription, apiKey: v } })}
+              onChange={(v) => handleUpdate({ transcription: { ...config.transcription, apiKey: v } })}
               type="password"
               placeholder="sk-..."
             />
@@ -110,14 +143,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         <SettingRow label="Language">
           <Select
             value={config.transcription.language}
-            onChange={(v) => updateConfig({ transcription: { ...config.transcription, language: v } })}
+            onChange={(v) => handleUpdate({ transcription: { ...config.transcription, language: v } })}
             options={[{ value: 'ja', label: 'Japanese' }, { value: 'en', label: 'English' }, { value: 'auto', label: 'Auto' }]}
           />
         </SettingRow>
         <SettingRow label="Model">
           <Select
             value={config.transcription.model}
-            onChange={(v) => updateConfig({ transcription: { ...config.transcription, model: v } })}
+            onChange={(v) => handleUpdate({ transcription: { ...config.transcription, model: v } })}
             options={config.transcription.mode === 'api'
               ? [{ value: 'whisper-1', label: 'whisper-1' }]
               : [
@@ -129,15 +162,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             }
           />
         </SettingRow>
-      </div>
+      </Section>
 
       {/* Summary */}
-      <div className="space-y-2">
-        <span className="text-white/50 text-[10px] uppercase tracking-wider">Summary</span>
+      <Section title="Summary">
         <SettingRow label="Mode">
           <Select
             value={config.summary.mode}
-            onChange={(v) => updateConfig({ summary: { ...config.summary, mode: v } })}
+            onChange={(v) => handleUpdate({ summary: { ...config.summary, mode: v } })}
             options={[{ value: 'cli', label: 'Claude CLI (Free)' }, { value: 'api', label: 'Anthropic API (BYOK)' }]}
           />
         </SettingRow>
@@ -145,40 +177,46 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <SettingRow label="Anthropic Key">
             <Input
               value={config.summary.apiKey || ''}
-              onChange={(v) => updateConfig({ summary: { ...config.summary, apiKey: v } })}
+              onChange={(v) => handleUpdate({ summary: { ...config.summary, apiKey: v } })}
               type="password"
               placeholder="sk-ant-..."
             />
           </SettingRow>
         )}
-      </div>
+      </Section>
 
       {/* Output */}
-      <div className="space-y-2">
-        <span className="text-white/50 text-[10px] uppercase tracking-wider">Output</span>
+      <Section title="Output">
         <SettingRow label="Directory">
           <Input
             value={config.output.directory}
-            onChange={(v) => updateConfig({ output: { ...config.output, directory: v } })}
+            onChange={(v) => handleUpdate({ output: { ...config.output, directory: v } })}
             placeholder="./meetings"
           />
         </SettingRow>
-      </div>
+      </Section>
 
       {/* Integrations */}
-      <div className="space-y-2">
-        <span className="text-white/50 text-[10px] uppercase tracking-wider">Integrations</span>
+      <Section title="Integrations">
         <Toggle
           checked={config.notion.enabled}
-          onChange={(v) => updateConfig({ notion: { ...config.notion, enabled: v } })}
+          onChange={(v) => handleUpdate({ notion: { ...config.notion, enabled: v } })}
           label="Notion"
         />
         {config.notion.enabled && (
           <div className="pl-4 space-y-2">
+            <SettingRow label="API Key">
+              <Input
+                value={config.notion.apiKey}
+                onChange={(v) => handleUpdate({ notion: { ...config.notion, apiKey: v } })}
+                type="password"
+                placeholder="ntn_..."
+              />
+            </SettingRow>
             <SettingRow label="DB ID">
               <Input
                 value={config.notion.databaseId}
-                onChange={(v) => updateConfig({ notion: { ...config.notion, databaseId: v } })}
+                onChange={(v) => handleUpdate({ notion: { ...config.notion, databaseId: v } })}
               />
             </SettingRow>
           </div>
@@ -186,15 +224,24 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
 
         <Toggle
           checked={config.slack.enabled}
-          onChange={(v) => updateConfig({ slack: { ...config.slack, enabled: v } })}
+          onChange={(v) => handleUpdate({ slack: { ...config.slack, enabled: v } })}
           label="Slack"
         />
         {config.slack.enabled && (
           <div className="pl-4 space-y-2">
+            <SettingRow label="Token">
+              <Input
+                value={config.slack.token}
+                onChange={(v) => handleUpdate({ slack: { ...config.slack, token: v } })}
+                type="password"
+                placeholder="xoxb-..."
+              />
+            </SettingRow>
             <SettingRow label="Channel">
               <Input
                 value={config.slack.channel}
-                onChange={(v) => updateConfig({ slack: { ...config.slack, channel: v } })}
+                onChange={(v) => handleUpdate({ slack: { ...config.slack, channel: v } })}
+                placeholder="#meeting-notes"
               />
             </SettingRow>
           </div>
@@ -202,10 +249,56 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
 
         <Toggle
           checked={config.remote.enabled}
-          onChange={(v) => updateConfig({ remote: { ...config.remote, enabled: v } })}
+          onChange={(v) => handleUpdate({ remote: { ...config.remote, enabled: v } })}
           label="Remote (SCP)"
         />
-      </div>
+        {config.remote.enabled && (
+          <div className="pl-4 space-y-2">
+            <SettingRow label="Host">
+              <Input
+                value={config.remote.host}
+                onChange={(v) => handleUpdate({ remote: { ...config.remote, host: v } })}
+              />
+            </SettingRow>
+            <SettingRow label="User">
+              <Input
+                value={config.remote.user}
+                onChange={(v) => handleUpdate({ remote: { ...config.remote, user: v } })}
+              />
+            </SettingRow>
+            <SettingRow label="Path">
+              <Input
+                value={config.remote.path}
+                onChange={(v) => handleUpdate({ remote: { ...config.remote, path: v } })}
+                placeholder="~/meetings"
+              />
+            </SettingRow>
+          </div>
+        )}
+      </Section>
+
+      {/* Hotkeys */}
+      <Section title="Hotkeys">
+        <div className="space-y-1">
+          {[
+            [`${mod}+Shift+R`, 'Record'],
+            [`${mod}+Shift+P`, 'Pause / Resume'],
+            [`${mod}+Shift+S`, 'Stop'],
+            [`${mod}+Shift+M`, 'Show / Hide']
+          ].map(([key, action]) => (
+            <div key={key} className="flex items-center justify-between py-0.5">
+              <span className="text-white/40 text-[10px]">{action}</span>
+              <div className="flex gap-0.5">
+                {key.split('+').map(k => (
+                  <kbd key={k} className="px-1.5 py-0.5 rounded bg-white/[0.06] text-white/50 text-[10px] font-mono border border-white/[0.06]">
+                    {k}
+                  </kbd>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
     </div>
   )
 }

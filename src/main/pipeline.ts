@@ -14,6 +14,11 @@ function sendProgress(win: BrowserWindow, step: ProgressStep, percent: number): 
   win.webContents.send('processing:progress', { step, percent })
 }
 
+function sendError(win: BrowserWindow, message: string): void {
+  win.webContents.send('pipeline:error', message)
+  win.webContents.send('recording:status', 'error')
+}
+
 export async function runPipeline(audioPath: string, win: BrowserWindow, startedAt: Date): Promise<void> {
   const config = getConfig()
 
@@ -41,13 +46,16 @@ export async function runPipeline(audioPath: string, win: BrowserWindow, started
 
     // Step 4: Publish to integrations
     sendProgress(win, 'publishing', 85)
+    const errors: string[] = []
     let notionPageId: string | undefined
 
     if (config.notion.enabled) {
       try {
         notionPageId = await publishToNotion(meetingData)
       } catch (err) {
-        console.error('[Pipeline] Notion publish failed:', err)
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        console.error('[Pipeline] Notion publish failed:', msg)
+        errors.push(`Notion: ${msg}`)
       }
     }
 
@@ -55,7 +63,9 @@ export async function runPipeline(audioPath: string, win: BrowserWindow, started
       try {
         await publishToSlack(meetingData, notionPageId)
       } catch (err) {
-        console.error('[Pipeline] Slack publish failed:', err)
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        console.error('[Pipeline] Slack publish failed:', msg)
+        errors.push(`Slack: ${msg}`)
       }
     }
 
@@ -63,15 +73,24 @@ export async function runPipeline(audioPath: string, win: BrowserWindow, started
       try {
         publishToRemote(mdPath)
       } catch (err) {
-        console.error('[Pipeline] Remote publish failed:', err)
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        console.error('[Pipeline] Remote publish failed:', msg)
+        errors.push(`Remote: ${msg}`)
       }
     }
 
     sendProgress(win, 'done', 100)
+    win.webContents.send('pipeline:output', mdPath)
     win.webContents.send('recording:status', 'done')
+
+    // Send partial errors as warnings (pipeline still succeeded)
+    if (errors.length > 0) {
+      win.webContents.send('pipeline:error', `Publishing warnings: ${errors.join('; ')}`)
+    }
   } catch (err) {
-    console.error('[Pipeline] Failed:', err)
-    win.webContents.send('recording:status', 'done')
+    const message = err instanceof Error ? err.message : 'Pipeline failed'
+    console.error('[Pipeline] Failed:', message)
+    sendError(win, message)
     throw err
   }
 }

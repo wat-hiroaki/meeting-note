@@ -6,20 +6,34 @@ import { createTray } from './tray'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { getConfig } from './config'
 
+// Prevent crash dialogs for non-critical spawn errors (e.g. ffmpeg not installed)
+process.on('uncaughtException', (err) => {
+  console.error('[Main] Uncaught exception:', err.message)
+  // Only quit on truly fatal errors, not ENOENT from missing binaries
+  if (!err.message.includes('ENOENT')) {
+    app.quit()
+  }
+})
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
   const config = getConfig()
   const isOnboarded = config.onboarded
 
+  const isMac = process.platform === 'darwin'
+
   mainWindow = new BrowserWindow({
     width: isOnboarded ? 380 : 420,
     height: isOnboarded ? 72 : 520,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: false,
+    ...(isMac ? { vibrancy: 'under-window', visualEffectState: 'active' } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

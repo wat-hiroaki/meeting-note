@@ -1,7 +1,7 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, shell, clipboard } from 'electron'
 import { execSync } from 'child_process'
 import { startRecording, pauseRecording, resumeRecording, stopRecording, getAudioDevices } from './recorder'
-import { getConfig, saveConfig, loadConfig } from './config'
+import { getConfig, saveConfig } from './config'
 import { ConfigSchema } from '../shared/types'
 import { runPipeline } from './pipeline'
 
@@ -42,10 +42,10 @@ export function registerIpcHandlers(): void {
 
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && audioPath) {
-      // Run full pipeline: transcribe → summarize → save → publish
       runPipeline(audioPath, win, recordingStartedAt).catch((err) => {
         console.error('[IPC] Pipeline error:', err)
-        win.webContents.send('recording:status', 'done')
+        win.webContents.send('pipeline:error', err instanceof Error ? err.message : 'Pipeline failed')
+        win.webContents.send('recording:status', 'error')
       })
     }
 
@@ -56,13 +56,21 @@ export function registerIpcHandlers(): void {
     return getAudioDevices()
   })
 
+  // File operations
+  ipcMain.handle('system:openPath', (_event, path: string) => {
+    shell.showItemInFolder(path)
+  })
+
+  ipcMain.handle('system:copyToClipboard', (_event, text: string) => {
+    clipboard.writeText(text)
+  })
+
   // Config
   ipcMain.handle('config:get', () => {
     return getConfig()
   })
 
   ipcMain.handle('config:set', (_event, config: unknown) => {
-    // Merge partial config with existing
     const current = getConfig()
     const merged = deepMerge(current, config as Record<string, unknown>)
     const result = ConfigSchema.safeParse(merged)
@@ -74,7 +82,7 @@ export function registerIpcHandlers(): void {
   // System checks
   ipcMain.handle('system:checkFfmpeg', () => {
     try {
-      execSync('ffmpeg -version', { timeout: 5000, stdio: 'pipe' })
+      execSync('ffmpeg -version', { timeout: 5000, stdio: 'pipe', windowsHide: true })
       return true
     } catch {
       return false
@@ -86,16 +94,29 @@ export function registerIpcHandlers(): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
 
-    if (mode === 'onboarding') {
-      win.setSize(420, 520)
-      win.setResizable(false)
-      win.center()
-    } else {
-      win.setSize(380, 72)
-      win.setResizable(false)
-      // Position at top-center of screen
-      const { width } = require('electron').screen.getPrimaryDisplay().workAreaSize
-      win.setPosition(Math.round((width - 380) / 2), 24)
+    const [currentX, currentY] = win.getPosition()
+
+    switch (mode) {
+      case 'onboarding':
+        win.setSize(420, 520)
+        win.setResizable(false)
+        win.center()
+        break
+      case 'settings':
+        win.setSize(380, 580)
+        win.setPosition(currentX, currentY)
+        break
+      case 'expanded':
+        win.setSize(380, 160)
+        win.setPosition(currentX, currentY)
+        break
+      default: {
+        win.setSize(380, 72)
+        win.setResizable(false)
+        const { width } = require('electron').screen.getPrimaryDisplay().workAreaSize
+        win.setPosition(Math.round((width - 380) / 2), 24)
+        break
+      }
     }
   })
 }

@@ -1,11 +1,12 @@
-export type RecordingStatus = 'idle' | 'recording' | 'paused' | 'processing' | 'done'
+export type RecordingStatus = 'idle' | 'recording' | 'paused' | 'processing' | 'done' | 'error'
 
 const statusConfig: Record<RecordingStatus, { color: string; label: string; pulse: boolean }> = {
-  idle: { color: 'bg-white/40', label: 'Ready', pulse: false },
+  idle: { color: 'bg-emerald-400', label: 'Ready', pulse: false },
   recording: { color: 'bg-red-500', label: 'REC', pulse: true },
   paused: { color: 'bg-yellow-400', label: 'Paused', pulse: false },
   processing: { color: 'bg-blue-400', label: 'Processing', pulse: true },
-  done: { color: 'bg-green-400', label: 'Done', pulse: false }
+  done: { color: 'bg-green-400', label: 'Done', pulse: false },
+  error: { color: 'bg-red-500', label: 'Error', pulse: false }
 }
 
 export function StatusIndicator({ status }: { status: RecordingStatus }): React.JSX.Element {
@@ -19,7 +20,9 @@ export function StatusIndicator({ status }: { status: RecordingStatus }): React.
         )}
         <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${config.color}`} />
       </div>
-      <span className="text-white/70 text-xs font-medium tracking-wide uppercase">
+      <span className={`text-xs font-medium tracking-wide uppercase ${
+        status === 'error' ? 'text-red-400' : 'text-white/70'
+      }`}>
         {config.label}
       </span>
     </div>

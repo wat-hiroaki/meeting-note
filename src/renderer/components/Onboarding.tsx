@@ -6,11 +6,44 @@ interface OnboardingProps {
 
 type Step = 'welcome' | 'transcription' | 'summary' | 'done'
 
+const steps: Step[] = ['welcome', 'transcription', 'summary', 'done']
+
 interface SetupState {
   transcriptionMode: string
   whisperApiKey: string
+  remoteHost: string
+  remoteUser: string
+  remotePythonPath: string
+  remoteScriptPath: string
   summaryMode: string
   anthropicApiKey: string
+}
+
+const isMac = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
+const mod = isMac ? 'Cmd' : 'Ctrl'
+
+function StepIcon({ icon }: { icon: string }): React.JSX.Element {
+  return <span className="text-base w-5 text-center shrink-0">{icon}</span>
+}
+
+function ProgressDots({ current }: { current: Step }): React.JSX.Element {
+  const currentIndex = steps.indexOf(current)
+  return (
+    <div className="flex items-center gap-1.5">
+      {steps.map((s, i) => (
+        <div
+          key={s}
+          className={`rounded-full transition-all ${
+            i === currentIndex
+              ? 'w-5 h-1.5 bg-blue-400'
+              : i < currentIndex
+                ? 'w-1.5 h-1.5 bg-blue-400/50'
+                : 'w-1.5 h-1.5 bg-white/15'
+          }`}
+        />
+      ))}
+    </div>
+  )
 }
 
 export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
@@ -19,23 +52,37 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   const [setup, setSetup] = useState<SetupState>({
     transcriptionMode: 'local',
     whisperApiKey: '',
+    remoteHost: '',
+    remoteUser: '',
+    remotePythonPath: 'python3',
+    remoteScriptPath: '~/transcribe.py',
     summaryMode: 'cli',
     anthropicApiKey: ''
   })
 
-  // Check FFmpeg on mount
   useEffect(() => {
     window.electronAPI.checkFfmpeg().then(setFfmpegOk).catch(() => setFfmpegOk(false))
   }, [])
 
-  const canProceedTranscription = setup.transcriptionMode !== 'api' || setup.whisperApiKey.length > 0
+  const canProceedTranscription = (() => {
+    if (setup.transcriptionMode === 'api') return setup.whisperApiKey.length > 0
+    if (setup.transcriptionMode === 'remote') return setup.remoteHost.length > 0 && setup.remoteUser.length > 0
+    return true
+  })()
+
   const canProceedSummary = setup.summaryMode !== 'api' || setup.anthropicApiKey.length > 0
 
   const handleFinish = (): void => {
     window.electronAPI.setConfig({
       transcription: {
         mode: setup.transcriptionMode,
-        api: { apiKey: setup.whisperApiKey, model: 'whisper-1' }
+        api: { apiKey: setup.whisperApiKey, model: 'whisper-1' },
+        remote: {
+          host: setup.remoteHost,
+          user: setup.remoteUser,
+          pythonPath: setup.remotePythonPath,
+          scriptPath: setup.remoteScriptPath
+        }
       },
       summary: {
         mode: setup.summaryMode,
@@ -45,9 +92,16 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     }).then(onComplete).catch(console.error)
   }
 
+  const installCmd = isMac ? 'brew install ffmpeg' : 'winget install Gyan.FFmpeg'
+
   return (
-    <div className="w-full h-full flex items-center justify-center p-6">
-      <div className="glass-bar rounded-3xl p-8 w-full max-w-md space-y-6">
+    <div className="w-full h-full flex items-center justify-center p-6 bg-[#13131a]">
+      <div className="rounded-3xl p-8 w-full max-w-md space-y-6 solid-panel">
+
+        {/* Progress dots */}
+        <div className="flex justify-center">
+          <ProgressDots current={step} />
+        </div>
 
         {/* Step: Welcome */}
         {step === 'welcome' && (
@@ -62,7 +116,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
             {/* FFmpeg status */}
             <div className={`rounded-xl px-4 py-3 text-sm ${
               ffmpegOk === null ? 'bg-white/5 text-white/40' :
-              ffmpegOk ? 'bg-green-500/10 text-green-400' : 'bg-yellow-500/10 text-yellow-400'
+              ffmpegOk ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400 border border-red-500/20'
             }`}>
               {ffmpegOk === null && 'Checking FFmpeg...'}
               {ffmpegOk === true && (
@@ -71,11 +125,16 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                 </div>
               )}
               {ffmpegOk === false && (
-                <div className="space-y-1">
-                  <div className="font-medium">FFmpeg not found</div>
-                  <div className="text-xs text-yellow-400/70">
-                    Run: winget install Gyan.FFmpeg
+                <div className="space-y-2">
+                  <div className="font-medium flex items-center gap-2">
+                    <span>&#10007;</span> FFmpeg is required
                   </div>
+                  <div className="text-xs text-red-400/70">
+                    Recording depends on FFmpeg. Install it first:
+                  </div>
+                  <code className="block text-xs bg-white/5 rounded-lg px-3 py-1.5 text-white/70 font-mono">
+                    {installCmd}
+                  </code>
                 </div>
               )}
             </div>
@@ -85,13 +144,13 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
               <div className="text-white/30 text-[10px] uppercase tracking-wider">How it works</div>
               <div className="space-y-1.5">
                 {[
-                  ['1', 'Record', 'Capture system audio via FFmpeg'],
-                  ['2', 'Transcribe', 'Whisper converts speech to text'],
-                  ['3', 'Summarize', 'Claude generates meeting notes'],
-                  ['4', 'Share', 'Save as MD, push to Notion/Slack']
-                ].map(([num, title, desc]) => (
-                  <div key={num} className="flex items-start gap-3 py-1">
-                    <span className="text-white/20 text-xs font-mono w-4 shrink-0">{num}</span>
+                  ['🎙', 'Record', 'Capture system audio via FFmpeg'],
+                  ['📝', 'Transcribe', 'Whisper converts speech to text'],
+                  ['🤖', 'Summarize', 'Claude generates meeting notes'],
+                  ['📤', 'Share', 'Save as MD, push to Notion/Slack']
+                ].map(([icon, title, desc]) => (
+                  <div key={title} className="flex items-start gap-3 py-1">
+                    <StepIcon icon={icon} />
                     <div>
                       <span className="text-white/80 text-sm">{title}</span>
                       <span className="text-white/35 text-xs ml-2">{desc}</span>
@@ -103,9 +162,10 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
 
             <button
               onClick={() => setStep('transcription')}
-              className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/90 text-sm font-medium transition-colors"
+              disabled={ffmpegOk === false}
+              className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/90 text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              Set up
+              {ffmpegOk === false ? 'Install FFmpeg to continue' : 'Set up'}
             </button>
           </div>
         )}
@@ -121,10 +181,10 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
 
             <div className="space-y-2">
               {([
-                ['local', 'Local (faster-whisper)', 'Free, runs on your machine. Requires Python + faster-whisper.', false],
-                ['api', 'OpenAI Whisper API', 'Cloud-based, fast. Requires OpenAI API key.', true],
-                ['remote', 'Remote (SSH)', 'Run on a GPU server via SSH.', false]
-              ] as const).map(([value, label, desc, showKey]) => (
+                ['local', 'Local (faster-whisper)', 'Free, runs on your machine. Requires Python + faster-whisper.'],
+                ['api', 'OpenAI Whisper API', 'Cloud-based, fast. Requires OpenAI API key.'],
+                ['remote', 'Remote (SSH)', 'Run on a GPU server via SSH.']
+              ] as const).map(([value, label, desc]) => (
                 <label
                   key={value}
                   className={`block rounded-xl px-4 py-3 cursor-pointer transition-all ${
@@ -147,7 +207,9 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                       <div className="text-white/35 text-xs">{desc}</div>
                     </div>
                   </div>
-                  {showKey && setup.transcriptionMode === 'api' && (
+
+                  {/* API key input */}
+                  {value === 'api' && setup.transcriptionMode === 'api' && (
                     <input
                       type="password"
                       value={setup.whisperApiKey}
@@ -155,6 +217,40 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                       placeholder="sk-..."
                       className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
                     />
+                  )}
+
+                  {/* Remote SSH inputs */}
+                  {value === 'remote' && setup.transcriptionMode === 'remote' && (
+                    <div className="mt-3 space-y-2">
+                      <input
+                        type="text"
+                        value={setup.remoteHost}
+                        onChange={(e) => setSetup(s => ({ ...s, remoteHost: e.target.value }))}
+                        placeholder="Host (e.g. gpu-server.local)"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
+                      />
+                      <input
+                        type="text"
+                        value={setup.remoteUser}
+                        onChange={(e) => setSetup(s => ({ ...s, remoteUser: e.target.value }))}
+                        placeholder="Username"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
+                      />
+                      <input
+                        type="text"
+                        value={setup.remotePythonPath}
+                        onChange={(e) => setSetup(s => ({ ...s, remotePythonPath: e.target.value }))}
+                        placeholder="Python path (default: python3)"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
+                      />
+                      <input
+                        type="text"
+                        value={setup.remoteScriptPath}
+                        onChange={(e) => setSetup(s => ({ ...s, remoteScriptPath: e.target.value }))}
+                        placeholder="Script path (default: ~/transcribe.py)"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
+                      />
+                    </div>
                   )}
                 </label>
               ))}
@@ -189,9 +285,9 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
 
             <div className="space-y-2">
               {([
-                ['cli', 'Claude CLI', 'Uses your Claude Code subscription. No extra cost.', false],
-                ['api', 'Anthropic API', 'Pay-per-use. Requires Anthropic API key.', true]
-              ] as const).map(([value, label, desc, showKey]) => (
+                ['cli', 'Claude CLI', 'Uses your Claude Code subscription. No extra cost.'],
+                ['api', 'Anthropic API', 'Pay-per-use. Requires Anthropic API key.']
+              ] as const).map(([value, label, desc]) => (
                 <label
                   key={value}
                   className={`block rounded-xl px-4 py-3 cursor-pointer transition-all ${
@@ -214,7 +310,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                       <div className="text-white/35 text-xs">{desc}</div>
                     </div>
                   </div>
-                  {showKey && setup.summaryMode === 'api' && (
+                  {value === 'api' && setup.summaryMode === 'api' && (
                     <input
                       type="password"
                       value={setup.anthropicApiKey}
@@ -255,10 +351,10 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
 
             <div className="space-y-2">
               {[
-                ['Ctrl+Shift+R', 'Start recording'],
-                ['Ctrl+Shift+P', 'Pause / Resume'],
-                ['Ctrl+Shift+S', 'Stop & process'],
-                ['Ctrl+Shift+M', 'Show / Hide']
+                [`${mod}+Shift+R`, 'Start recording'],
+                [`${mod}+Shift+P`, 'Pause / Resume'],
+                [`${mod}+Shift+S`, 'Stop & process'],
+                [`${mod}+Shift+M`, 'Show / Hide']
               ].map(([key, action]) => (
                 <div key={key} className="flex items-center justify-between py-1.5">
                   <span className="text-white/50 text-sm">{action}</span>

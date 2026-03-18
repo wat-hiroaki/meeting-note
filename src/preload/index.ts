@@ -13,13 +13,18 @@ const api = {
   stopRecording: (): Promise<void> => ipcRenderer.invoke('recording:stop'),
   getAudioDevices: (): Promise<string[]> => ipcRenderer.invoke('recording:devices'),
 
+  // File operations
+  openPath: (path: string): Promise<void> => ipcRenderer.invoke('system:openPath', path),
+  copyToClipboard: (text: string): Promise<void> => ipcRenderer.invoke('system:copyToClipboard', text),
+
   // Config
   getConfig: (): Promise<unknown> => ipcRenderer.invoke('config:get'),
   setConfig: (config: unknown): Promise<void> => ipcRenderer.invoke('config:set', config),
 
   // System checks
   checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('system:checkFfmpeg'),
-  setWindowMode: (mode: 'bar' | 'onboarding'): Promise<void> => ipcRenderer.invoke('window:setMode', mode),
+  setWindowMode: (mode: 'bar' | 'onboarding' | 'settings' | 'expanded'): Promise<void> => ipcRenderer.invoke('window:setMode', mode),
+  platform: process.platform,
 
   // Events from main
   onRecordingStatus: (callback: (status: string) => void): (() => void) => {
@@ -36,6 +41,16 @@ const api = {
     const handler = (_event: IpcRendererEvent, action: string): void => callback(action)
     ipcRenderer.on('hotkey:action', handler)
     return () => ipcRenderer.removeListener('hotkey:action', handler)
+  },
+  onPipelineError: (callback: (message: string) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, message: string): void => callback(message)
+    ipcRenderer.on('pipeline:error', handler)
+    return () => ipcRenderer.removeListener('pipeline:error', handler)
+  },
+  onOutputReady: (callback: (path: string) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, path: string): void => callback(path)
+    ipcRenderer.on('pipeline:output', handler)
+    return () => ipcRenderer.removeListener('pipeline:output', handler)
   }
 }
 

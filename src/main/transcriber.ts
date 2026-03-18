@@ -33,6 +33,26 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
   const config = getConfig()
   const scriptPath = join(__dirname, '../../scripts/transcribe.py')
 
+  // Check if script exists
+  if (!existsSync(scriptPath)) {
+    throw new Error(
+      `Transcription script not found at ${scriptPath}. ` +
+      'Local mode requires Python + faster-whisper. ' +
+      'Consider switching to "api" mode in Settings.'
+    )
+  }
+
+  // Check if Python is available
+  try {
+    execSync('python --version', { timeout: 5000, stdio: 'pipe', windowsHide: true })
+  } catch {
+    throw new Error(
+      'Python is not installed or not in PATH. ' +
+      'Local transcription requires Python + faster-whisper. ' +
+      'Install Python or switch to "api" mode in Settings.'
+    )
+  }
+
   return new Promise((resolve, reject) => {
     const args = [
       scriptPath,
@@ -56,7 +76,16 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
 
     proc.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`Transcription failed (code ${code}): ${stderr}`))
+        // Provide actionable error messages
+        const errMsg = stderr.trim()
+        if (errMsg.includes('No module named')) {
+          reject(new Error(
+            'faster-whisper is not installed. Run: pip install faster-whisper\n' +
+            'Or switch to "api" mode in Settings.'
+          ))
+        } else {
+          reject(new Error(`Transcription failed: ${errMsg || `exit code ${code}`}`))
+        }
         return
       }
 
@@ -73,7 +102,14 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
     })
 
     proc.on('error', (err) => {
-      reject(new Error(`Failed to start Python: ${err.message}`))
+      if (err.message.includes('ENOENT')) {
+        reject(new Error(
+          'Python is not installed or not in PATH. ' +
+          'Install Python or switch to "api" mode in Settings.'
+        ))
+      } else {
+        reject(new Error(`Failed to start transcription: ${err.message}`))
+      }
     })
   })
 }
