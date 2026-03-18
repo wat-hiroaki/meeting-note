@@ -94,7 +94,7 @@ export function FloatingBar(): React.JSX.Element {
       // Summary check
       if (config.summary.mode === 'cli') {
         const cliOk = await window.electronAPI.checkClaudeCli().catch(() => false)
-        if (!cliOk) issues.push('Claude CLI not installed')
+        if (!cliOk) issues.push('Claude Code CLI not installed')
       } else if (config.summary.mode === 'api') {
         if (!config.summary.api?.apiKey) issues.push('Anthropic API key not set')
       }

@@ -60,7 +60,7 @@ async function summarizeCLI(prompt: string): Promise<string> {
 
     proc.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`Claude CLI failed (code ${code}): ${stderr}`))
+        reject(new Error(`Claude Code CLI failed (code ${code}): ${stderr}`))
         return
       }
       const result = stdout.trim()
@@ -70,11 +70,11 @@ async function summarizeCLI(prompt: string): Promise<string> {
     proc.on('error', (err) => {
       if (err.message.includes('ENOENT')) {
         reject(new Error(
-          'Claude CLI is not installed or not in PATH. ' +
+          'Claude Code CLI is not installed or not in PATH. ' +
           'Install it (npm install -g @anthropic-ai/claude-code) or switch to "api" mode in Settings.'
         ))
       } else {
-        reject(new Error(`Failed to start Claude CLI: ${err.message}`))
+        reject(new Error(`Failed to start Claude Code CLI: ${err.message}`))
       }
     })
   })

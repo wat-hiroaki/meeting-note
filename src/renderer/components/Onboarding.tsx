@@ -221,16 +221,16 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
               {ffmpegOk === null && 'Checking FFmpeg...'}
               {ffmpegOk === true && (
                 <div className="flex items-center gap-2">
-                  <span className="text-green-400">&#10003;</span> FFmpeg detected
+                  <span className="text-green-400">&#10003;</span> Audio converter ready
                 </div>
               )}
               {ffmpegOk === false && (
                 <div className="space-y-2">
                   <div className="font-medium flex items-center gap-2">
-                    <span>&#10007;</span> FFmpeg is required
+                    <span>&#10007;</span> Audio converter missing
                   </div>
                   <div className="text-xs text-red-400/70">
-                    FFmpeg is needed to convert audio for transcription. Install it first:
+                    FFmpeg is needed to process recorded audio. Install it first:
                   </div>
                   <code className="block text-xs bg-white/5 rounded-lg px-3 py-1.5 text-white/70 font-mono">
                     {installCmd}
@@ -467,7 +467,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
 
             <div className="space-y-2">
               {([
-                ['cli', 'Claude CLI', 'Uses your Claude Code subscription. No extra cost.'],
+                ['cli', 'Claude Code CLI', 'Uses your Claude Code subscription. No extra cost.'],
                 ['api', 'Anthropic API', 'Pay-per-use. Requires Anthropic API key.']
               ] as const).map(([value, label, desc]) => (
                 <label
@@ -496,7 +496,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                   {/* CLI: check installation */}
                   {value === 'cli' && setup.summaryMode === 'cli' && (
                     <div className="mt-3">
-                      <DepsCheck label="Claude CLI" ok={claudeCliOk} installCmd="npm install -g @anthropic-ai/claude-code" />
+                      <DepsCheck label="Claude Code CLI" ok={claudeCliOk} installCmd="npm install -g @anthropic-ai/claude-code" />
                     </div>
                   )}
 
@@ -608,7 +608,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                 <div>System audio: <span className="text-white/80">Automatic (WASAPI loopback)</span></div>
                 <div>Transcription: <span className="text-white/80">{setup.transcriptionMode}{setup.transcriptionMode === 'local' ? ` (${setup.whisperModel})` : ''}</span></div>
                 <div>Language: <span className="text-white/80">{LANG_OPTIONS.find(l => l.value === setup.language)?.label || setup.language}</span></div>
-                <div>Summary: <span className="text-white/80">{setup.summaryMode === 'cli' ? 'Claude CLI' : 'Anthropic API'}</span></div>
+                <div>Summary: <span className="text-white/80">{setup.summaryMode === 'cli' ? 'Claude Code CLI' : 'Anthropic API'}</span></div>
                 <div>Output: <span className="text-white/80">{setup.outputDirectory}</span></div>
               </div>
             </div>

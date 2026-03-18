@@ -217,7 +217,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <Select
             value={config.summary.mode}
             onChange={(v) => handleUpdate({ summary: { ...config.summary, mode: v } })}
-            options={[{ value: 'cli', label: 'Claude CLI (Free)' }, { value: 'api', label: 'Anthropic API (BYOK)' }]}
+            options={[{ value: 'cli', label: 'Claude Code CLI (Free)' }, { value: 'api', label: 'Anthropic API (BYOK)' }]}
           />
         </SettingRow>
         {config.summary.mode === 'api' && (

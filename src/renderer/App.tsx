@@ -29,7 +29,10 @@ export function App(): React.JSX.Element {
   if (!onboarded) {
     return <Onboarding onComplete={() => {
       // Relaunch app to switch from opaque to transparent window
-      window.electronAPI.relaunchApp()
+      // In dev mode, relaunch may not work perfectly — reload as fallback
+      window.electronAPI.relaunchApp().catch(() => {
+        window.location.reload()
+      })
     }} />
   }
 
