@@ -62,7 +62,9 @@ export const ConfigSchema = z.object({
     record: z.string().default('Ctrl+Shift+R'),
     pause: z.string().default('Ctrl+Shift+P'),
     stop: z.string().default('Ctrl+Shift+S')
-  }).default({})
+  }).default({}),
+
+  onboarded: z.boolean().default(false)
 })
 
 export type Config = z.infer<typeof ConfigSchema>

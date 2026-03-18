@@ -17,6 +17,10 @@ const api = {
   getConfig: (): Promise<unknown> => ipcRenderer.invoke('config:get'),
   setConfig: (config: unknown): Promise<void> => ipcRenderer.invoke('config:set', config),
 
+  // System checks
+  checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('system:checkFfmpeg'),
+  setWindowMode: (mode: 'bar' | 'onboarding'): Promise<void> => ipcRenderer.invoke('window:setMode', mode),
+
   // Events from main
   onRecordingStatus: (callback: (status: string) => void): (() => void) => {
     const handler = (_event: IpcRendererEvent, status: string): void => callback(status)

@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import { execSync } from 'child_process'
 import { startRecording, pauseRecording, resumeRecording, stopRecording, getAudioDevices } from './recorder'
-import { getConfig, saveConfig } from './config'
+import { getConfig, saveConfig, loadConfig } from './config'
 import { ConfigSchema } from '../shared/types'
 import { runPipeline } from './pipeline'
 
@@ -61,11 +62,57 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('config:set', (_event, config: unknown) => {
-    const result = ConfigSchema.safeParse(config)
+    // Merge partial config with existing
+    const current = getConfig()
+    const merged = deepMerge(current, config as Record<string, unknown>)
+    const result = ConfigSchema.safeParse(merged)
     if (result.success) {
       saveConfig(result.data)
     }
   })
+
+  // System checks
+  ipcMain.handle('system:checkFfmpeg', () => {
+    try {
+      execSync('ffmpeg -version', { timeout: 5000, stdio: 'pipe' })
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  // Window mode switching
+  ipcMain.handle('window:setMode', (event, mode: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+
+    if (mode === 'onboarding') {
+      win.setSize(420, 520)
+      win.setResizable(false)
+      win.center()
+    } else {
+      win.setSize(380, 72)
+      win.setResizable(false)
+      // Position at top-center of screen
+      const { width } = require('electron').screen.getPrimaryDisplay().workAreaSize
+      win.setPosition(Math.round((width - 380) / 2), 24)
+    }
+  })
+}
+
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...target }
+  for (const key of Object.keys(source)) {
+    if (
+      source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) &&
+      target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])
+    ) {
+      result[key] = deepMerge(target[key] as Record<string, unknown>, source[key] as Record<string, unknown>)
+    } else {
+      result[key] = source[key]
+    }
+  }
+  return result
 }
 
 export function getCurrentAudioPath(): string {

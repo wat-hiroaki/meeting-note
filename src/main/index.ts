@@ -4,13 +4,17 @@ import { is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
 import { createTray } from './tray'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
+import { getConfig } from './config'
 
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
+  const config = getConfig()
+  const isOnboarded = config.onboarded
+
   mainWindow = new BrowserWindow({
-    width: 380,
-    height: 72,
+    width: isOnboarded ? 380 : 420,
+    height: isOnboarded ? 72 : 520,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
