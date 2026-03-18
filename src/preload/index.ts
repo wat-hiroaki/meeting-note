@@ -7,7 +7,7 @@ const api = {
   closeWindow: (): Promise<void> => ipcRenderer.invoke('window:close'),
 
   // Recording
-  startRecording: (): Promise<void> => ipcRenderer.invoke('recording:start'),
+  startRecording: (options?: { micDevice?: string; systemDevice?: string }): Promise<void> => ipcRenderer.invoke('recording:start', options),
   pauseRecording: (): Promise<void> => ipcRenderer.invoke('recording:pause'),
   resumeRecording: (): Promise<void> => ipcRenderer.invoke('recording:resume'),
   stopRecording: (): Promise<void> => ipcRenderer.invoke('recording:stop'),

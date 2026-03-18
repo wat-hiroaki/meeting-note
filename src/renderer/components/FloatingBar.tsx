@@ -121,7 +121,10 @@ export function FloatingBar(): React.JSX.Element {
       case 'idle':
       case 'done':
       case 'error':
-        start()
+        start({
+          micDevice: config.recording.micDevice,
+          systemDevice: config.recording.systemDevice
+        })
         break
       case 'recording':
         pause()

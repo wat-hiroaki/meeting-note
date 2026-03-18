@@ -34,13 +34,13 @@ export function useRecording(): UseRecordingReturn {
     }
   }, [])
 
-  const start = useCallback((): void => {
+  const start = useCallback((options?: { micDevice?: string; systemDevice?: string }): void => {
     setSeconds(0)
     setError(null)
     setOutputPath(null)
     setStatus('recording')
     startTimer()
-    window.electronAPI.startRecording().catch((err: unknown) => {
+    window.electronAPI.startRecording(options).catch((err: unknown) => {
       setStatus('error')
       setError(err instanceof Error ? err.message : 'Failed to start recording')
       stopTimer()

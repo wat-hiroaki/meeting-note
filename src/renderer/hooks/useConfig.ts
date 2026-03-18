@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 
 interface ConfigData {
-  recording: { device: string }
+  recording: { micDevice: string; systemDevice: string }
   transcription: { mode: string; model: string; language: string; apiKey?: string; remote: { host: string; user: string } }
   summary: { mode: string; language: string; apiKey?: string }
   output: { directory: string }
@@ -11,7 +11,7 @@ interface ConfigData {
 }
 
 const defaultConfig: ConfigData = {
-  recording: { device: 'default' },
+  recording: { micDevice: 'default', systemDevice: 'none' },
   transcription: { mode: 'local', model: 'large-v3', language: 'en', apiKey: '', remote: { host: '', user: '' } },
   summary: { mode: 'cli', language: 'en', apiKey: '' },
   output: { directory: './meetings' },

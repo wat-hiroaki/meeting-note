@@ -2,7 +2,8 @@ import { z } from 'zod'
 
 export const ConfigSchema = z.object({
   recording: z.object({
-    device: z.string().default('default'),
+    micDevice: z.string().default('default'),
+    systemDevice: z.string().default('none'),
     format: z.enum(['wav', 'mp3']).default('wav'),
     sampleRate: z.number().default(16000)
   }).default({}),

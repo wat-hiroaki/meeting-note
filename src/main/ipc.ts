@@ -19,9 +19,9 @@ export function registerIpcHandlers(): void {
   })
 
   // Recording
-  ipcMain.handle('recording:start', () => {
+  ipcMain.handle('recording:start', (_event, options?: { micDevice?: string; systemDevice?: string }) => {
     recordingStartedAt = new Date()
-    currentAudioPath = startRecording()
+    currentAudioPath = startRecording(options)
     console.log('[IPC] Recording started:', currentAudioPath)
   })
 

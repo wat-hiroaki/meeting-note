@@ -9,6 +9,8 @@ type Step = 'welcome' | 'transcription' | 'summary' | 'output' | 'done'
 const steps: Step[] = ['welcome', 'transcription', 'summary', 'output', 'done']
 
 interface SetupState {
+  micDevice: string
+  systemDevice: string
   language: string
   transcriptionMode: string
   whisperModel: string
@@ -103,7 +105,10 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   const [modelSize, setModelSize] = useState<string>('')
   const [downloading, setDownloading] = useState(false)
   const [downloadDone, setDownloadDone] = useState(false)
+  const [audioDevices, setAudioDevices] = useState<string[]>([])
   const [setup, setSetup] = useState<SetupState>({
+    micDevice: 'default',
+    systemDevice: 'none',
     language: 'en',
     transcriptionMode: 'local',
     whisperModel: 'small',
@@ -123,6 +128,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     window.electronAPI.checkPython().then(setPythonOk).catch(() => setPythonOk(false))
     window.electronAPI.checkFasterWhisper().then(setWhisperOk).catch(() => setWhisperOk(false))
     window.electronAPI.checkClaudeCli().then(setClaudeCliOk).catch(() => setClaudeCliOk(false))
+    window.electronAPI.getAudioDevices().then(setAudioDevices).catch(() => setAudioDevices([]))
   }, [])
 
   // Check model cache when local mode + deps ready
@@ -163,6 +169,10 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
 
   const handleFinish = (): void => {
     window.electronAPI.setConfig({
+      recording: {
+        micDevice: setup.micDevice,
+        systemDevice: setup.systemDevice
+      },
       transcription: {
         mode: setup.transcriptionMode,
         model: setup.whisperModel,
@@ -233,6 +243,44 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                 </div>
               )}
             </div>
+
+            {/* Audio devices */}
+            {ffmpegOk && audioDevices.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-white/30 text-[10px] uppercase tracking-wider">Audio capture</div>
+                <div className="space-y-1.5">
+                  <div className="space-y-1">
+                    <label className="text-white/50 text-xs">Microphone (your voice)</label>
+                    <select
+                      value={setup.micDevice}
+                      onChange={(e) => setSetup(s => ({ ...s, micDevice: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25"
+                    >
+                      <option value="default">Auto-detect</option>
+                      {audioDevices.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-white/50 text-xs">System audio (others' voices)</label>
+                    <select
+                      value={setup.systemDevice}
+                      onChange={(e) => setSetup(s => ({ ...s, systemDevice: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25"
+                    >
+                      <option value="none">None (mic only)</option>
+                      {audioDevices.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  {setup.systemDevice === 'none' && (
+                    <p className="text-yellow-400/60 text-[10px] leading-relaxed">
+                      {isMac
+                        ? 'To capture meeting audio from others, install BlackHole: brew install blackhole-2ch'
+                        : 'To capture meeting audio from others, enable "Stereo Mix" in Windows Sound Settings, or install VB-Cable.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* How it works */}
             <div className="space-y-2">
@@ -578,6 +626,8 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
             <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-4 py-3 space-y-1">
               <div className="text-white/50 text-[10px] uppercase tracking-wider">Your setup</div>
               <div className="text-white/60 text-xs space-y-0.5">
+                <div>Mic: <span className="text-white/80">{setup.micDevice === 'default' ? 'Auto-detect' : setup.micDevice}</span></div>
+                <div>System audio: <span className="text-white/80">{setup.systemDevice === 'none' ? 'Off' : setup.systemDevice}</span></div>
                 <div>Transcription: <span className="text-white/80">{setup.transcriptionMode}{setup.transcriptionMode === 'local' ? ` (${setup.whisperModel})` : ''}</span></div>
                 <div>Language: <span className="text-white/80">{LANG_OPTIONS.find(l => l.value === setup.language)?.label || setup.language}</span></div>
                 <div>Summary: <span className="text-white/80">{setup.summaryMode === 'cli' ? 'Claude CLI' : 'Anthropic API'}</span></div>
