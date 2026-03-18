@@ -1,5 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { startRecording, pauseRecording, resumeRecording, stopRecording, getAudioDevices } from './recorder'
+import { getConfig, saveConfig } from './config'
+import { ConfigSchema } from '../shared/types'
 
 let currentAudioPath = ''
 
@@ -48,13 +50,16 @@ export function registerIpcHandlers(): void {
     return getAudioDevices()
   })
 
-  // Config stubs — will be implemented in Task 8
+  // Config
   ipcMain.handle('config:get', () => {
-    return {}
+    return getConfig()
   })
 
-  ipcMain.handle('config:set', (_event, _config: unknown) => {
-    console.log('[IPC] config:set')
+  ipcMain.handle('config:set', (_event, config: unknown) => {
+    const result = ConfigSchema.safeParse(config)
+    if (result.success) {
+      saveConfig(result.data)
+    }
   })
 }
 
