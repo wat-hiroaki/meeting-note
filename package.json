@@ -1,6 +1,6 @@
 {
   "name": "meeting-note",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI-powered meeting note taker — System audio capture → Whisper transcription → Claude summary → MD/Notion/Slack distribution",
   "main": "./out/main/index.js",
   "scripts": {

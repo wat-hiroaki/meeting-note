@@ -130,7 +130,7 @@ async function summarizeOpenAI(prompt: string): Promise<string> {
     throw new Error(`OpenAI API error (${response.status}): ${error}`)
   }
 
-  const data = await response.json()
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
   return data.choices?.[0]?.message?.content || 'Summary could not be generated.'
 }
 
@@ -155,7 +155,7 @@ async function summarizeGemini(prompt: string): Promise<string> {
     throw new Error(`Gemini API error (${response.status}): ${error}`)
   }
 
-  const data = await response.json()
+  const data = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
   return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Summary could not be generated.'
 }
 
