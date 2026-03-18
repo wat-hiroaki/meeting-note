@@ -217,16 +217,41 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <Select
             value={config.summary.mode}
             onChange={(v) => handleUpdate({ summary: { ...config.summary, mode: v } })}
-            options={[{ value: 'cli', label: 'Claude Code CLI (Free)' }, { value: 'api', label: 'Anthropic API (BYOK)' }]}
+            options={[
+              { value: 'cli', label: 'Claude Code CLI (Free)' },
+              { value: 'anthropic', label: 'Anthropic API' },
+              { value: 'openai', label: 'OpenAI API (Beta)' },
+              { value: 'gemini', label: 'Gemini API (Beta)' }
+            ]}
           />
         </SettingRow>
-        {config.summary.mode === 'api' && (
+        {config.summary.mode === 'anthropic' && (
           <SettingRow label="Anthropic Key">
             <Input
-              value={config.summary.api?.apiKey || ''}
-              onChange={(v) => handleUpdate({ summary: { ...config.summary, api: { ...config.summary.api, apiKey: v } } })}
+              value={config.summary.anthropic?.apiKey || ''}
+              onChange={(v) => handleUpdate({ summary: { ...config.summary, anthropic: { ...config.summary.anthropic, apiKey: v } } })}
               type="password"
               placeholder="sk-ant-..."
+            />
+          </SettingRow>
+        )}
+        {config.summary.mode === 'openai' && (
+          <SettingRow label="OpenAI Key">
+            <Input
+              value={config.summary.openai?.apiKey || ''}
+              onChange={(v) => handleUpdate({ summary: { ...config.summary, openai: { ...config.summary.openai, apiKey: v } } })}
+              type="password"
+              placeholder="sk-..."
+            />
+          </SettingRow>
+        )}
+        {config.summary.mode === 'gemini' && (
+          <SettingRow label="Gemini Key">
+            <Input
+              value={config.summary.gemini?.apiKey || ''}
+              onChange={(v) => handleUpdate({ summary: { ...config.summary, gemini: { ...config.summary.gemini, apiKey: v } } })}
+              type="password"
+              placeholder="AIza..."
             />
           </SettingRow>
         )}

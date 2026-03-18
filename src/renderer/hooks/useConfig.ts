@@ -9,7 +9,13 @@ interface ConfigData {
     remote: { host: string; user: string; pythonPath: string; scriptPath: string }
     api: { apiKey: string; model: string }
   }
-  summary: { mode: string; language: string; api: { apiKey: string; model: string; maxTokens: number } }
+  summary: {
+    mode: string
+    language: string
+    anthropic: { apiKey: string; model: string; maxTokens: number }
+    openai: { apiKey: string; model: string }
+    gemini: { apiKey: string; model: string }
+  }
   output: { directory: string }
   notion: { enabled: boolean; apiKey: string; databaseId: string }
   slack: { enabled: boolean; token: string; channel: string }
@@ -25,7 +31,13 @@ const defaultConfig: ConfigData = {
     remote: { host: '', user: '', pythonPath: 'python3', scriptPath: '~/transcribe.py' },
     api: { apiKey: '', model: 'whisper-1' }
   },
-  summary: { mode: 'cli', language: 'en', api: { apiKey: '', model: 'claude-sonnet-4-20250514', maxTokens: 4096 } },
+  summary: {
+    mode: 'cli',
+    language: 'en',
+    anthropic: { apiKey: '', model: 'claude-sonnet-4-20250514', maxTokens: 4096 },
+    openai: { apiKey: '', model: 'gpt-4o' },
+    gemini: { apiKey: '', model: 'gemini-2.5-flash' }
+  },
   output: { directory: './meetings' },
   notion: { enabled: false, apiKey: '', databaseId: '' },
   slack: { enabled: false, token: '', channel: '' },

@@ -20,6 +20,8 @@ interface SetupState {
   remoteScriptPath: string
   summaryMode: string
   anthropicApiKey: string
+  openaiApiKey: string
+  geminiApiKey: string
   outputDirectory: string
 }
 
@@ -116,6 +118,8 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     remoteScriptPath: '~/transcribe.py',
     summaryMode: 'cli',
     anthropicApiKey: '',
+    openaiApiKey: '',
+    geminiApiKey: '',
     outputDirectory: './meetings'
   })
 
@@ -158,8 +162,10 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   })()
 
   const canProceedSummary = (() => {
-    if (setup.summaryMode === 'api') return setup.anthropicApiKey.length > 0
     if (setup.summaryMode === 'cli') return claudeCliOk === true
+    if (setup.summaryMode === 'anthropic') return setup.anthropicApiKey.length > 0
+    if (setup.summaryMode === 'openai') return setup.openaiApiKey.length > 0
+    if (setup.summaryMode === 'gemini') return setup.geminiApiKey.length > 0
     return true
   })()
 
@@ -183,7 +189,9 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
       summary: {
         mode: setup.summaryMode,
         language: setup.language,
-        api: { apiKey: setup.anthropicApiKey }
+        anthropic: { apiKey: setup.anthropicApiKey },
+        openai: { apiKey: setup.openaiApiKey },
+        gemini: { apiKey: setup.geminiApiKey }
       },
       output: {
         directory: setup.outputDirectory
@@ -467,8 +475,10 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
 
             <div className="space-y-2">
               {([
-                ['cli', 'Claude Code CLI', 'Uses your Claude Code subscription. No extra cost.'],
-                ['api', 'Anthropic API', 'Pay-per-use. Requires Anthropic API key.']
+                ['cli', 'Claude Code CLI', 'Free with Claude Code subscription.'],
+                ['anthropic', 'Anthropic API', 'Direct API access. Requires Anthropic API key.'],
+                ['openai', 'OpenAI API (Beta)', 'GPT-4o and others. Requires OpenAI API key.'],
+                ['gemini', 'Google Gemini API (Beta)', 'Gemini 2.5 Flash and others. Requires Google API key.']
               ] as const).map(([value, label, desc]) => (
                 <label
                   key={value}
@@ -500,13 +510,35 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                     </div>
                   )}
 
-                  {/* API: key input */}
-                  {value === 'api' && setup.summaryMode === 'api' && (
+                  {/* Anthropic API: key input */}
+                  {value === 'anthropic' && setup.summaryMode === 'anthropic' && (
                     <input
                       type="password"
                       value={setup.anthropicApiKey}
                       onChange={(e) => setSetup(s => ({ ...s, anthropicApiKey: e.target.value }))}
                       placeholder="sk-ant-..."
+                      className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
+                    />
+                  )}
+
+                  {/* OpenAI API: key input */}
+                  {value === 'openai' && setup.summaryMode === 'openai' && (
+                    <input
+                      type="password"
+                      value={setup.openaiApiKey}
+                      onChange={(e) => setSetup(s => ({ ...s, openaiApiKey: e.target.value }))}
+                      placeholder="sk-..."
+                      className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
+                    />
+                  )}
+
+                  {/* Gemini API: key input */}
+                  {value === 'gemini' && setup.summaryMode === 'gemini' && (
+                    <input
+                      type="password"
+                      value={setup.geminiApiKey}
+                      onChange={(e) => setSetup(s => ({ ...s, geminiApiKey: e.target.value }))}
+                      placeholder="AIza..."
                       className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
                     />
                   )}
@@ -608,7 +640,12 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                 <div>System audio: <span className="text-white/80">Automatic (WASAPI loopback)</span></div>
                 <div>Transcription: <span className="text-white/80">{setup.transcriptionMode}{setup.transcriptionMode === 'local' ? ` (${setup.whisperModel})` : ''}</span></div>
                 <div>Language: <span className="text-white/80">{LANG_OPTIONS.find(l => l.value === setup.language)?.label || setup.language}</span></div>
-                <div>Summary: <span className="text-white/80">{setup.summaryMode === 'cli' ? 'Claude Code CLI' : 'Anthropic API'}</span></div>
+                <div>Summary: <span className="text-white/80">{
+                  setup.summaryMode === 'cli' ? 'Claude Code CLI' :
+                  setup.summaryMode === 'anthropic' ? 'Anthropic API' :
+                  setup.summaryMode === 'openai' ? 'OpenAI API' :
+                  setup.summaryMode === 'gemini' ? 'Google Gemini API' : setup.summaryMode
+                }</span></div>
                 <div>Output: <span className="text-white/80">{setup.outputDirectory}</span></div>
               </div>
             </div>

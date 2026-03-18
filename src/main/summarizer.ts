@@ -31,10 +31,12 @@ export async function summarize(transcript: TranscriptResult): Promise<string> {
   const text = transcript.segments.map(s => `[${formatTime(s.start)}] ${s.text}`).join('\n')
   const prompt = SUMMARY_PROMPT + text
 
-  if (config.summary.mode === 'api') {
-    return summarizeAPI(prompt)
+  switch (config.summary.mode) {
+    case 'anthropic': return summarizeAnthropic(prompt)
+    case 'openai': return summarizeOpenAI(prompt)
+    case 'gemini': return summarizeGemini(prompt)
+    default: return summarizeCLI(prompt)
   }
-  return summarizeCLI(prompt)
 }
 
 async function summarizeCLI(prompt: string): Promise<string> {
@@ -80,12 +82,12 @@ async function summarizeCLI(prompt: string): Promise<string> {
   })
 }
 
-async function summarizeAPI(prompt: string): Promise<string> {
+async function summarizeAnthropic(prompt: string): Promise<string> {
   const config = getConfig()
-  const { apiKey } = config.summary.api
+  const { apiKey } = config.summary.anthropic
 
   if (!apiKey) {
-    throw new Error('Anthropic API key is required for API summary mode. Set summary.api.apiKey in config.')
+    throw new Error('Anthropic API key is required. Set summary.anthropic.apiKey in config.')
   }
 
   // Dynamic import to avoid requiring the SDK when using CLI mode
@@ -93,8 +95,8 @@ async function summarizeAPI(prompt: string): Promise<string> {
   const client = new Anthropic({ apiKey })
 
   const message = await client.messages.create({
-    model: config.summary.api.model,
-    max_tokens: config.summary.api.maxTokens,
+    model: config.summary.anthropic.model,
+    max_tokens: config.summary.anthropic.maxTokens,
     messages: [{ role: 'user', content: prompt }]
   })
 
@@ -103,6 +105,58 @@ async function summarizeAPI(prompt: string): Promise<string> {
     return 'Summary could not be generated.'
   }
   return textBlock.text || 'Summary could not be generated.'
+}
+
+async function summarizeOpenAI(prompt: string): Promise<string> {
+  const config = getConfig()
+  const { apiKey, model } = config.summary.openai
+  if (!apiKey) throw new Error('OpenAI API key is required.')
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4096
+    })
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`OpenAI API error (${response.status}): ${error}`)
+  }
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content || 'Summary could not be generated.'
+}
+
+async function summarizeGemini(prompt: string): Promise<string> {
+  const config = getConfig()
+  const { apiKey, model } = config.summary.gemini
+  if (!apiKey) throw new Error('Google Gemini API key is required.')
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    }
+  )
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Gemini API error (${response.status}): ${error}`)
+  }
+
+  const data = await response.json()
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Summary could not be generated.'
 }
 
 function formatTime(seconds: number): string {

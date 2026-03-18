@@ -95,8 +95,12 @@ export function FloatingBar(): React.JSX.Element {
       if (config.summary.mode === 'cli') {
         const cliOk = await window.electronAPI.checkClaudeCli().catch(() => false)
         if (!cliOk) issues.push('Claude Code CLI not installed')
-      } else if (config.summary.mode === 'api') {
-        if (!config.summary.api?.apiKey) issues.push('Anthropic API key not set')
+      } else if (config.summary.mode === 'anthropic') {
+        if (!config.summary.anthropic?.apiKey) issues.push('Anthropic API key not set')
+      } else if (config.summary.mode === 'openai') {
+        if (!config.summary.openai?.apiKey) issues.push('OpenAI API key not set')
+      } else if (config.summary.mode === 'gemini') {
+        if (!config.summary.gemini?.apiKey) issues.push('Gemini API key not set')
       }
 
       if (issues.length > 0) {
