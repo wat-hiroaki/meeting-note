@@ -169,6 +169,7 @@ function parseDeviceList(output: string): string[] {
 }
 
 export function startRecording(device?: string): string {
+  // Clean up any leftover files from previous recordings
   const tempDir = getTempDir()
   state.outputDir = tempDir
   state.segments = []
@@ -184,6 +185,11 @@ function startSegment(): string {
   state.segments.push(segmentPath)
 
   const device = state.device === 'default' ? getDefaultDevice() : state.device
+  const bin = getFfmpegPath()
+
+  console.log('[Recorder] FFmpeg binary:', bin)
+  console.log('[Recorder] Audio device:', device)
+  console.log('[Recorder] Output path:', segmentPath)
 
   const args = isMac
     ? [
@@ -205,7 +211,7 @@ function startSegment(): string {
         segmentPath
       ]
 
-  state.process = spawn(getFfmpegPath(), args)
+  state.process = spawn(bin, args)
 
   state.process.stderr?.on('data', (data: Buffer) => {
     const msg = data.toString()
@@ -228,6 +234,12 @@ function startSegment(): string {
 
 function getDefaultDevice(): string {
   const devices = getAudioDevices()
+  console.log('[Recorder] Available audio devices:', devices)
+
+  if (devices.length === 0) {
+    throw new Error('No audio devices found. Please check your microphone connection and permissions.')
+  }
+
   if (isMac) {
     // Prefer BlackHole or Soundflower for system audio loopback on macOS
     const preferred = devices.find(d =>
@@ -235,7 +247,7 @@ function getDefaultDevice(): string {
       d.toLowerCase().includes('soundflower') ||
       d.toLowerCase().includes('loopback')
     )
-    return preferred || devices[0] || '0'
+    return preferred || devices[0]
   }
   // Windows: prefer stereo mix or virtual cable for system audio
   const preferred = devices.find(d =>
@@ -243,7 +255,7 @@ function getDefaultDevice(): string {
     d.toLowerCase().includes('virtual cable') ||
     d.toLowerCase().includes('wasapi')
   )
-  return preferred || devices[0] || 'Microphone'
+  return preferred || devices[0]
 }
 
 export function pauseRecording(): void {
@@ -291,7 +303,13 @@ export async function stopRecording(): Promise<string> {
     return await concatSegments()
   }
 
-  return state.segments[0] || ''
+  const outputPath = state.segments[0] || ''
+  if (outputPath && !existsSync(outputPath)) {
+    console.error('[Recorder] Recording file not found:', outputPath)
+    throw new Error(`Recording failed: audio file was not created at ${outputPath}`)
+  }
+
+  return outputPath
 }
 
 async function concatSegments(): Promise<string> {
@@ -306,7 +324,7 @@ async function concatSegments(): Promise<string> {
   writeFileSync(listPath, listContent)
 
   return new Promise((resolve, reject) => {
-    const proc = spawn('ffmpeg', [
+    const proc = spawn(getFfmpegPath(), [
       '-f', 'concat',
       '-safe', '0',
       '-i', listPath,
