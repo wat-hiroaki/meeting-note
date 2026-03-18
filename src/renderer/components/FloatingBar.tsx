@@ -208,7 +208,7 @@ export function FloatingBar(): React.JSX.Element {
         </ControlButton>
 
         {/* Divider */}
-        <div className="w-px h-4 bg-white/[0.06]" />
+        <div className="w-px h-4 bg-white/10" />
 
         {/* Window controls */}
         <div className="flex items-center gap-0.5">

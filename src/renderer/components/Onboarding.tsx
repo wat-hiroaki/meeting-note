@@ -200,8 +200,8 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   const installCmd = isMac ? 'brew install ffmpeg' : 'winget install Gyan.FFmpeg'
 
   return (
-    <div className="w-full h-full flex items-center justify-center p-6 bg-[#13131a]">
-      <div className="rounded-3xl p-8 w-full max-w-md space-y-6 solid-panel">
+    <div className="w-full h-full flex items-center justify-center p-4 bg-[#13131a] overflow-y-auto">
+      <div className="rounded-3xl p-7 w-full max-w-md space-y-5 solid-panel my-auto">
 
         {/* Progress dots */}
         <div className="flex justify-center">

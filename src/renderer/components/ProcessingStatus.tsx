@@ -59,7 +59,19 @@ export function ProcessingStatus({ outputPath, error, onDismiss }: ProcessingSta
     )
   }
 
-  if (!progress) return null
+  // Show skeleton when processing starts but no progress yet
+  if (!progress) {
+    return (
+      <div className="solid-panel rounded-2xl px-4 py-3 mt-1 no-drag">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-white/60 text-xs">Starting...</span>
+        </div>
+        <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-full w-1/4 bg-white/20 rounded-full animate-pulse" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="solid-panel rounded-2xl px-4 py-3 mt-1 no-drag">
@@ -76,7 +88,7 @@ export function ProcessingStatus({ outputPath, error, onDismiss }: ProcessingSta
 
       {/* Progress bar */}
       {!isDone && (
-        <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+        <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-blue-400 to-purple-400 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${progress.percent}%` }}
@@ -87,8 +99,8 @@ export function ProcessingStatus({ outputPath, error, onDismiss }: ProcessingSta
       {/* Done state: show output actions */}
       {isDone && outputPath && (
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-white/40 text-[10px] truncate flex-1" title={outputPath}>
-            {outputPath.replace(/\\/g, '/').split('/').slice(-2).join('/')}
+          <span className="text-white/40 text-[10px] truncate max-w-[180px]" title={outputPath}>
+            {outputPath.replace(/\\/g, '/').split('/').pop()}
           </span>
           <button
             onClick={handleOpenFile}

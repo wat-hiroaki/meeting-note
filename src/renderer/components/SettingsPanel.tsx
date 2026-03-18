@@ -56,9 +56,9 @@ function Toggle({ checked, onChange, label }: {
     <label className="no-drag flex items-center gap-2 cursor-pointer">
       <div
         onClick={() => onChange(!checked)}
-        className={`w-8 h-4 rounded-full transition-colors ${checked ? 'bg-blue-500' : 'bg-white/15'} relative`}
+        className={`w-9 h-5 rounded-full transition-colors ${checked ? 'bg-blue-500' : 'bg-white/15'} relative cursor-pointer`}
       >
-        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
+        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </div>
       <span className="text-white/60 text-xs">{label}</span>
     </label>
@@ -101,7 +101,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
   }
 
   return (
-    <div className="rounded-2xl p-4 mt-1 space-y-3 max-h-[400px] overflow-y-auto no-drag solid-panel">
+    <div className="rounded-2xl p-4 mt-1 space-y-3 max-h-[500px] overflow-y-auto no-drag solid-panel">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -112,12 +112,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         </div>
         <button
           onClick={onClose}
-          className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+          className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
           title="Close settings"
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <line x1="1" y1="1" x2="9" y2="9" />
-            <line x1="9" y1="1" x2="1" y2="9" />
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <line x1="2" y1="2" x2="10" y2="10" />
+            <line x1="10" y1="2" x2="2" y2="10" />
           </svg>
         </button>
       </div>
@@ -272,6 +272,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         />
         {config.notion.enabled && (
           <div className="pl-4 space-y-2">
+            <p className="text-white/30 text-[10px] leading-relaxed">
+              Create an integration at notion.so/my-integrations, copy the Internal Token, and share your database with the integration.
+            </p>
             <SettingRow label="API Key">
               <Input
                 value={config.notion.apiKey}
@@ -284,6 +287,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
               <Input
                 value={config.notion.databaseId}
                 onChange={(v) => handleUpdate({ notion: { ...config.notion, databaseId: v } })}
+                placeholder="Open DB → copy ID from URL"
               />
             </SettingRow>
           </div>
@@ -296,6 +300,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         />
         {config.slack.enabled && (
           <div className="pl-4 space-y-2">
+            <p className="text-white/30 text-[10px] leading-relaxed">
+              Create a Slack App at api.slack.com/apps, add chat:write scope, install to workspace, then copy the Bot Token.
+            </p>
             <SettingRow label="Token">
               <Input
                 value={config.slack.token}
