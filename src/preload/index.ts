@@ -27,6 +27,11 @@ const api = {
     const handler = (_event: IpcRendererEvent, progress: { step: string; percent: number }): void => callback(progress)
     ipcRenderer.on('processing:progress', handler)
     return () => ipcRenderer.removeListener('processing:progress', handler)
+  },
+  onHotkeyAction: (callback: (action: string) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, action: string): void => callback(action)
+    ipcRenderer.on('hotkey:action', handler)
+    return () => ipcRenderer.removeListener('hotkey:action', handler)
   }
 }
 
