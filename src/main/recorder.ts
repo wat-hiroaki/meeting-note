@@ -135,11 +135,26 @@ function parseMacDeviceList(output: string): string[] {
 function parseDeviceList(output: string): string[] {
   const devices: string[] = []
   const lines = output.split('\n')
+
+  // ffmpeg v8+ format: "DeviceName" (audio) / "DeviceName" (video)
+  // ffmpeg v6-7 format: section header "DirectShow audio devices" then device lines
   let isAudio = false
 
   for (const line of lines) {
+    // v8+ format: match lines with "(audio)" suffix
+    const v8Match = line.match(/"([^"]+)"\s*\(audio\)/)
+    if (v8Match) {
+      devices.push(v8Match[1])
+      continue
+    }
+
+    // v6-7 format: section-based parsing
     if (line.includes('DirectShow audio devices')) {
       isAudio = true
+      continue
+    }
+    if (line.includes('DirectShow video devices')) {
+      isAudio = false
       continue
     }
     if (isAudio && line.includes('"')) {
