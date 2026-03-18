@@ -25,15 +25,15 @@ function createWindow(): void {
 
   mainWindow = new BrowserWindow({
     width: isOnboarded ? 380 : 440,
-    height: isOnboarded ? 72 : 600,
+    height: isOnboarded ? 72 : 650,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    hasShadow: false,
+    transparent: isOnboarded,
+    backgroundColor: isOnboarded ? '#00000000' : '#13131a',
+    hasShadow: !isOnboarded,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: false,
-    ...(isMac ? { vibrancy: 'under-window', visualEffectState: 'active' } : {}),
+    ...(isMac && isOnboarded ? { vibrancy: 'under-window', visualEffectState: 'active' } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -41,8 +41,9 @@ function createWindow(): void {
     }
   })
 
-  // Force transparent background on Windows (Chromium compositor workaround)
-  mainWindow.setBackgroundColor('#00000000')
+  if (isOnboarded) {
+    mainWindow.setBackgroundColor('#00000000')
+  }
   mainWindow.setVisibleOnAllWorkspaces(true)
 
   // Minimize to tray instead of closing

@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell, clipboard } from 'electron'
+import { ipcMain, BrowserWindow, shell, clipboard, app } from 'electron'
 import { execSync } from 'child_process'
 import { startRecording, pauseRecording, resumeRecording, stopRecording, getAudioDevices } from './recorder'
 import { getConfig, saveConfig } from './config'
@@ -54,6 +54,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('recording:devices', () => {
     return getAudioDevices()
+  })
+
+  // App lifecycle
+  ipcMain.handle('app:relaunch', () => {
+    app.relaunch()
+    app.exit(0)
   })
 
   // File operations
@@ -203,7 +209,7 @@ export function registerIpcHandlers(): void {
 
     switch (mode) {
       case 'onboarding':
-        win.setSize(440, 600)
+        win.setSize(440, 650)
         win.setResizable(false)
         win.center()
         break

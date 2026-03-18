@@ -21,6 +21,9 @@ const api = {
   getConfig: (): Promise<unknown> => ipcRenderer.invoke('config:get'),
   setConfig: (config: unknown): Promise<void> => ipcRenderer.invoke('config:set', config),
 
+  // App lifecycle
+  relaunchApp: (): Promise<void> => ipcRenderer.invoke('app:relaunch'),
+
   // System checks
   checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('system:checkFfmpeg'),
   checkClaudeCli: (): Promise<boolean> => ipcRenderer.invoke('system:checkClaudeCli'),

@@ -25,7 +25,10 @@ export function App(): React.JSX.Element {
   if (onboarded === null) return <div />
 
   if (!onboarded) {
-    return <Onboarding onComplete={() => setOnboarded(true)} />
+    return <Onboarding onComplete={() => {
+      // Relaunch app to switch from opaque to transparent window
+      window.electronAPI.relaunchApp()
+    }} />
   }
 
   return <FloatingBar />
