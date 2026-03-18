@@ -209,7 +209,7 @@ export function registerIpcHandlers(): void {
 
     switch (mode) {
       case 'onboarding':
-        win.setSize(440, 650)
+        win.setSize(480, 680)
         win.setResizable(false)
         win.center()
         break

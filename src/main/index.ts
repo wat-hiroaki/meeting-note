@@ -24,8 +24,8 @@ function createWindow(): void {
   const isMac = process.platform === 'darwin'
 
   mainWindow = new BrowserWindow({
-    width: isOnboarded ? 380 : 440,
-    height: isOnboarded ? 72 : 650,
+    width: isOnboarded ? 380 : 480,
+    height: isOnboarded ? 72 : 680,
     frame: false,
     transparent: isOnboarded,
     backgroundColor: isOnboarded ? '#00000000' : '#13131a',
