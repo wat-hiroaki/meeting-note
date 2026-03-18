@@ -77,6 +77,10 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   const [ffmpegOk, setFfmpegOk] = useState<boolean | null>(null)
   const [pythonOk, setPythonOk] = useState<boolean | null>(null)
   const [whisperOk, setWhisperOk] = useState<boolean | null>(null)
+  const [modelCached, setModelCached] = useState<boolean | null>(null)
+  const [modelSize, setModelSize] = useState<string>('')
+  const [downloading, setDownloading] = useState(false)
+  const [downloadDone, setDownloadDone] = useState(false)
   const [setup, setSetup] = useState<SetupState>({
     transcriptionMode: 'local',
     whisperApiKey: '',
@@ -95,11 +99,34 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     window.electronAPI.checkFasterWhisper().then(setWhisperOk).catch(() => setWhisperOk(false))
   }, [])
 
+  // Check model cache when on transcription step with local mode
+  useEffect(() => {
+    if (step === 'transcription' && setup.transcriptionMode === 'local' && whisperOk) {
+      window.electronAPI.checkWhisperModel('large-v3').then((result) => {
+        setModelCached(result.cached)
+        setModelSize(result.size)
+      }).catch(() => setModelCached(false))
+    }
+  }, [step, setup.transcriptionMode, whisperOk])
+
+  const handleDownloadModel = (): void => {
+    setDownloading(true)
+    window.electronAPI.downloadWhisperModel('large-v3').then((ok) => {
+      setDownloading(false)
+      setDownloadDone(ok)
+      if (ok) setModelCached(true)
+    }).catch(() => {
+      setDownloading(false)
+    })
+  }
+
   const canProceedTranscription = (() => {
     if (setup.transcriptionMode === 'api') return setup.whisperApiKey.length > 0
     if (setup.transcriptionMode === 'remote') return setup.remoteHost.length > 0 && setup.remoteUser.length > 0
-    // Local mode requires Python + faster-whisper
-    if (setup.transcriptionMode === 'local') return pythonOk === true && whisperOk === true
+    // Local mode requires Python + faster-whisper + model downloaded
+    if (setup.transcriptionMode === 'local') {
+      return pythonOk === true && whisperOk === true && (modelCached === true || downloadDone)
+    }
     return true
   })()
 
@@ -241,11 +268,45 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                     </div>
                   </div>
 
-                  {/* Local mode: dependency checks */}
+                  {/* Local mode: dependency checks + model download */}
                   {value === 'local' && setup.transcriptionMode === 'local' && (
                     <div className="mt-3 space-y-1.5">
                       <DepsCheck label="Python" ok={pythonOk} installCmd={isMac ? 'brew install python3' : 'winget install Python.Python.3.11'} />
                       <DepsCheck label="faster-whisper" ok={whisperOk} installCmd="pip install faster-whisper" />
+                      {pythonOk && whisperOk && modelCached !== null && (
+                        <div className={`rounded-lg px-3 py-2 text-xs ${
+                          modelCached || downloadDone
+                            ? 'bg-green-500/10 text-green-400'
+                            : downloading
+                              ? 'bg-blue-500/10 text-blue-400'
+                              : 'bg-yellow-500/10 text-yellow-400'
+                        }`}>
+                          {(modelCached || downloadDone) && (
+                            <span className="flex items-center gap-1.5">
+                              <span>&#10003;</span> Model large-v3 ready
+                            </span>
+                          )}
+                          {!modelCached && !downloadDone && downloading && (
+                            <div className="space-y-1">
+                              <span className="flex items-center gap-1.5">
+                                <span className="animate-spin">&#9696;</span> Downloading large-v3 ({modelSize})...
+                              </span>
+                              <span className="text-blue-400/60">This may take a few minutes.</span>
+                            </div>
+                          )}
+                          {!modelCached && !downloadDone && !downloading && (
+                            <div className="space-y-2">
+                              <span>Model large-v3 ({modelSize}) not downloaded yet.</span>
+                              <button
+                                onClick={handleDownloadModel}
+                                className="block w-full py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-xs transition-colors"
+                              >
+                                Download now
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 

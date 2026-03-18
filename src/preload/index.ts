@@ -25,6 +25,13 @@ const api = {
   checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('system:checkFfmpeg'),
   checkPython: (): Promise<boolean> => ipcRenderer.invoke('system:checkPython'),
   checkFasterWhisper: (): Promise<boolean> => ipcRenderer.invoke('system:checkFasterWhisper'),
+  checkWhisperModel: (model: string): Promise<{ cached: boolean; model: string; size: string }> => ipcRenderer.invoke('system:checkWhisperModel', model),
+  downloadWhisperModel: (model: string): Promise<boolean> => ipcRenderer.invoke('system:downloadWhisperModel', model),
+  onWhisperDownloadStatus: (callback: (msg: { status: string; model?: string; size?: string; error?: string }) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, msg: { status: string; model?: string; size?: string; error?: string }): void => callback(msg)
+    ipcRenderer.on('whisper:download-status', handler)
+    return () => ipcRenderer.removeListener('whisper:download-status', handler)
+  },
   setWindowMode: (mode: 'bar' | 'onboarding' | 'settings' | 'expanded'): Promise<void> => ipcRenderer.invoke('window:setMode', mode),
   platform: process.platform,
 

@@ -123,6 +123,62 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  // Check if Whisper model is already downloaded
+  ipcMain.handle('system:checkWhisperModel', (_event, model: string) => {
+    try {
+      const scriptPath = require('path').join(__dirname, '../../scripts/transcribe.py')
+      const output = execSync(`python "${scriptPath}" --check-model --model ${model}`, {
+        encoding: 'utf-8',
+        timeout: 15000,
+        stdio: 'pipe',
+        windowsHide: true
+      })
+      const result = JSON.parse(output.trim())
+      return result as { cached: boolean; model: string; size: string }
+    } catch {
+      return { cached: false, model, size: 'unknown' }
+    }
+  })
+
+  // Download Whisper model (async, sends progress)
+  ipcMain.handle('system:downloadWhisperModel', (event, model: string) => {
+    const scriptPath = require('path').join(__dirname, '../../scripts/transcribe.py')
+    const { spawn: spawnProc } = require('child_process')
+    const proc = spawnProc('python', [scriptPath, '--download-only', '--model', model], {
+      windowsHide: true
+    })
+
+    const win = BrowserWindow.fromWebContents(event.sender)
+    let stdout = ''
+
+    proc.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString()
+      // Parse line-delimited JSON
+      const lines = stdout.split('\n').filter(Boolean)
+      for (const line of lines) {
+        try {
+          const msg = JSON.parse(line)
+          if (win) win.webContents.send('whisper:download-status', msg)
+        } catch { /* partial line */ }
+      }
+    })
+
+    proc.stderr?.on('data', (data: Buffer) => {
+      // Model download progress goes to stderr via huggingface_hub
+      const msg = data.toString()
+      if (win && msg.includes('%')) {
+        win.webContents.send('whisper:download-progress', msg.trim())
+      }
+    })
+
+    return new Promise<boolean>((resolve) => {
+      proc.on('close', (code: number) => {
+        resolve(code === 0)
+      })
+      proc.on('error', () => resolve(false))
+    })
+  })
+
   // Window mode switching
   ipcMain.handle('window:setMode', (event, mode: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)

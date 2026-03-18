@@ -154,10 +154,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             options={config.transcription.mode === 'api'
               ? [{ value: 'whisper-1', label: 'whisper-1' }]
               : [
-                  { value: 'large-v3', label: 'large-v3' },
-                  { value: 'medium', label: 'medium' },
-                  { value: 'small', label: 'small' },
-                  { value: 'base', label: 'base' }
+                  { value: 'large-v3', label: 'large-v3 (~3 GB)' },
+                  { value: 'medium', label: 'medium (~1.5 GB)' },
+                  { value: 'small', label: 'small (~500 MB)' },
+                  { value: 'base', label: 'base (~150 MB)' }
                 ]
             }
           />

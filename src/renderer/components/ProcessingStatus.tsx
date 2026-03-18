@@ -6,7 +6,7 @@ interface Progress {
 }
 
 const stepLabels: Record<string, string> = {
-  transcribing: 'Transcribing...',
+  transcribing: 'Transcribing (model loading on first run)...',
   summarizing: 'Summarizing...',
   saving: 'Saving...',
   publishing: 'Publishing...',

@@ -35,7 +35,7 @@ export async function summarize(transcript: TranscriptResult): Promise<string> {
 
 async function summarizeCLI(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('claude', ['-p', '--no-config'], {
+    const proc = spawn('claude', ['-p'], {
       shell: true
     })
 
