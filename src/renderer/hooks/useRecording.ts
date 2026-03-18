@@ -6,7 +6,7 @@ interface UseRecordingReturn {
   seconds: number
   error: string | null
   outputPath: string | null
-  start: () => void
+  start: (options?: { micDevice?: string; systemDevice?: string }) => void
   pause: () => void
   resume: () => void
   stop: () => void

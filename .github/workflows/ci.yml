@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+        node-version: [20]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: TypeScript type check
+        run: |
+          npx tsc --noEmit -p tsconfig.main.json
+          npx tsc --noEmit -p tsconfig.preload.json
+          npx tsc --noEmit -p tsconfig.renderer.json
+
+      - name: Lint
+        run: npm run lint

@@ -1,7 +1,6 @@
 import { spawn, execSync } from 'child_process'
 import { join } from 'path'
-import { existsSync, readFileSync } from 'fs'
-import { createReadStream } from 'fs'
+import { existsSync } from 'fs'
 import { getConfig } from './config'
 
 export interface TranscriptSegment {

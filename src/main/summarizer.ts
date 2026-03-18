@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'child_process'
+import { spawn } from 'child_process'
 import { getConfig } from './config'
 import type { TranscriptResult } from './transcriber'
 

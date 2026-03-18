@@ -107,7 +107,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('system:checkClaudeCli', () => {
     try {
-      execSync('claude --version', { timeout: 5000, stdio: 'pipe', windowsHide: true, shell: true })
+      execSync('claude --version', { timeout: 5000, stdio: 'pipe', windowsHide: true })
       return true
     } catch {
       return false

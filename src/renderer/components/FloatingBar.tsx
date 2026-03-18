@@ -86,9 +86,9 @@ export function FloatingBar(): React.JSX.Element {
         if (!pyOk) issues.push('Python not installed')
         else if (!whisperOk) issues.push('faster-whisper not installed (pip install faster-whisper)')
       } else if (config.transcription.mode === 'api') {
-        if (!config.transcription.apiKey) issues.push('OpenAI API key not set')
+        if (!config.transcription.api?.apiKey) issues.push('OpenAI API key not set')
       } else if (config.transcription.mode === 'remote') {
-        if (!config.transcription.remote.host) issues.push('Remote host not configured')
+        if (!config.transcription.remote?.host) issues.push('Remote host not configured')
       }
 
       // Summary check
@@ -96,7 +96,7 @@ export function FloatingBar(): React.JSX.Element {
         const cliOk = await window.electronAPI.checkClaudeCli().catch(() => false)
         if (!cliOk) issues.push('Claude CLI not installed')
       } else if (config.summary.mode === 'api') {
-        if (!config.summary.apiKey) issues.push('Anthropic API key not set')
+        if (!config.summary.api?.apiKey) issues.push('Anthropic API key not set')
       }
 
       if (issues.length > 0) {
