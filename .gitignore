@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+*.log
+.env
+.env.local
+meetings/
+*.wav
+*.mp3
+*.webm
+__pycache__/
+*.pyc

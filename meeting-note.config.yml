@@ -1,0 +1,52 @@
+# meeting-note configuration
+# Copy to %APPDATA%/meeting-note/config.yml to customize
+
+recording:
+  device: "default"
+  format: "wav"
+  sampleRate: 16000
+
+transcription:
+  mode: "local"           # local | remote
+  model: "large-v3"
+  language: "ja"
+  # Remote settings (when mode: remote)
+  remote:
+    host: ""
+    user: ""
+    pythonPath: "python3"
+    scriptPath: "~/transcribe.py"
+
+summary:
+  mode: "cli"             # cli | api
+  language: "ja"
+  # API settings (when mode: api)
+  api:
+    model: "claude-sonnet-4-20250514"
+    maxTokens: 4096
+
+output:
+  directory: "./meetings"
+  filenameFormat: "YYYY-MM-DD_HHmm"
+
+notion:
+  enabled: false
+  apiKey: ""
+  databaseId: ""
+
+slack:
+  enabled: false
+  token: ""
+  channel: ""
+
+remote:
+  enabled: false
+  host: ""
+  user: ""
+  path: "~/meetings"
+
+hotkeys:
+  toggle: "Ctrl+Shift+M"
+  record: "Ctrl+Shift+R"
+  pause: "Ctrl+Shift+P"
+  stop: "Ctrl+Shift+S"
