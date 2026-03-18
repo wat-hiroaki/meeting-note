@@ -23,6 +23,8 @@ const api = {
 
   // System checks
   checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('system:checkFfmpeg'),
+  checkPython: (): Promise<boolean> => ipcRenderer.invoke('system:checkPython'),
+  checkFasterWhisper: (): Promise<boolean> => ipcRenderer.invoke('system:checkFasterWhisper'),
   setWindowMode: (mode: 'bar' | 'onboarding' | 'settings' | 'expanded'): Promise<void> => ipcRenderer.invoke('window:setMode', mode),
   platform: process.platform,
 

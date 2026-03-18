@@ -89,6 +89,24 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('system:checkPython', () => {
+    try {
+      execSync('python --version', { timeout: 5000, stdio: 'pipe', windowsHide: true })
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  ipcMain.handle('system:checkFasterWhisper', () => {
+    try {
+      execSync('python -c "import faster_whisper"', { timeout: 10000, stdio: 'pipe', windowsHide: true })
+      return true
+    } catch {
+      return false
+    }
+  })
+
   // Window mode switching
   ipcMain.handle('window:setMode', (event, mode: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)

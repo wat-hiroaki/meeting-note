@@ -10,7 +10,7 @@ export const ConfigSchema = z.object({
   transcription: z.object({
     mode: z.enum(['local', 'remote', 'api']).default('local'),
     model: z.string().default('large-v3'),
-    language: z.string().default('ja'),
+    language: z.string().default('en'),
     remote: z.object({
       host: z.string().default(''),
       user: z.string().default(''),
@@ -25,7 +25,7 @@ export const ConfigSchema = z.object({
 
   summary: z.object({
     mode: z.enum(['cli', 'api']).default('cli'),
-    language: z.string().default('ja'),
+    language: z.string().default('en'),
     api: z.object({
       apiKey: z.string().default(''),
       model: z.string().default('claude-sonnet-4-20250514'),

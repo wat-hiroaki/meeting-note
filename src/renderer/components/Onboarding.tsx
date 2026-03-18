@@ -26,6 +26,32 @@ function StepIcon({ icon }: { icon: string }): React.JSX.Element {
   return <span className="text-base w-5 text-center shrink-0">{icon}</span>
 }
 
+function DepsCheck({ label, ok, installCmd }: { label: string; ok: boolean | null; installCmd: string }): React.JSX.Element {
+  return (
+    <div className={`rounded-lg px-3 py-2 text-xs ${
+      ok === null ? 'bg-white/5 text-white/40' :
+      ok ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+    }`}>
+      {ok === null && `Checking ${label}...`}
+      {ok === true && (
+        <span className="flex items-center gap-1.5">
+          <span>&#10003;</span> {label} detected
+        </span>
+      )}
+      {ok === false && (
+        <div className="space-y-1">
+          <span className="flex items-center gap-1.5 font-medium">
+            <span>&#10007;</span> {label} not found
+          </span>
+          <code className="block bg-white/5 rounded px-2 py-1 text-white/60 font-mono">
+            {installCmd}
+          </code>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ProgressDots({ current }: { current: Step }): React.JSX.Element {
   const currentIndex = steps.indexOf(current)
   return (
@@ -49,6 +75,8 @@ function ProgressDots({ current }: { current: Step }): React.JSX.Element {
 export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   const [step, setStep] = useState<Step>('welcome')
   const [ffmpegOk, setFfmpegOk] = useState<boolean | null>(null)
+  const [pythonOk, setPythonOk] = useState<boolean | null>(null)
+  const [whisperOk, setWhisperOk] = useState<boolean | null>(null)
   const [setup, setSetup] = useState<SetupState>({
     transcriptionMode: 'local',
     whisperApiKey: '',
@@ -60,13 +88,18 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     anthropicApiKey: ''
   })
 
+  // Check system deps on mount
   useEffect(() => {
     window.electronAPI.checkFfmpeg().then(setFfmpegOk).catch(() => setFfmpegOk(false))
+    window.electronAPI.checkPython().then(setPythonOk).catch(() => setPythonOk(false))
+    window.electronAPI.checkFasterWhisper().then(setWhisperOk).catch(() => setWhisperOk(false))
   }, [])
 
   const canProceedTranscription = (() => {
     if (setup.transcriptionMode === 'api') return setup.whisperApiKey.length > 0
     if (setup.transcriptionMode === 'remote') return setup.remoteHost.length > 0 && setup.remoteUser.length > 0
+    // Local mode requires Python + faster-whisper
+    if (setup.transcriptionMode === 'local') return pythonOk === true && whisperOk === true
     return true
   })()
 
@@ -181,7 +214,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
 
             <div className="space-y-2">
               {([
-                ['local', 'Local (faster-whisper)', 'Free, runs on your machine. Requires Python + faster-whisper.'],
+                ['local', 'Local (faster-whisper)', 'Free, runs on your machine.'],
                 ['api', 'OpenAI Whisper API', 'Cloud-based, fast. Requires OpenAI API key.'],
                 ['remote', 'Remote (SSH)', 'Run on a GPU server via SSH.']
               ] as const).map(([value, label, desc]) => (
@@ -207,6 +240,14 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                       <div className="text-white/35 text-xs">{desc}</div>
                     </div>
                   </div>
+
+                  {/* Local mode: dependency checks */}
+                  {value === 'local' && setup.transcriptionMode === 'local' && (
+                    <div className="mt-3 space-y-1.5">
+                      <DepsCheck label="Python" ok={pythonOk} installCmd={isMac ? 'brew install python3' : 'winget install Python.Python.3.11'} />
+                      <DepsCheck label="faster-whisper" ok={whisperOk} installCmd="pip install faster-whisper" />
+                    </div>
+                  )}
 
                   {/* API key input */}
                   {value === 'api' && setup.transcriptionMode === 'api' && (

@@ -12,8 +12,8 @@ interface ConfigData {
 
 const defaultConfig: ConfigData = {
   recording: { device: 'default' },
-  transcription: { mode: 'local', model: 'large-v3', language: 'ja', apiKey: '', remote: { host: '', user: '' } },
-  summary: { mode: 'cli', language: 'ja', apiKey: '' },
+  transcription: { mode: 'local', model: 'large-v3', language: 'en', apiKey: '', remote: { host: '', user: '' } },
+  summary: { mode: 'cli', language: 'en', apiKey: '' },
   output: { directory: './meetings' },
   notion: { enabled: false, apiKey: '', databaseId: '' },
   slack: { enabled: false, token: '', channel: '' },

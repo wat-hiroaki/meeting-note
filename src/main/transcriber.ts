@@ -75,30 +75,44 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
     })
 
     proc.on('close', (code) => {
+      // The Python script outputs JSON errors to stdout, so check stdout first
+      if (stdout.trim()) {
+        try {
+          const result = JSON.parse(stdout) as TranscriptResult | { error: string }
+          if ('error' in result) {
+            // Script returned a structured error (e.g. faster-whisper not installed)
+            const msg = result.error
+            if (msg.includes('faster-whisper') || msg.includes('faster_whisper')) {
+              reject(new Error(
+                'faster-whisper is not installed.\nRun: pip install faster-whisper\nOr switch to "api" mode in Settings.'
+              ))
+            } else {
+              reject(new Error(msg))
+            }
+            return
+          }
+          if (code === 0) {
+            resolve(result as TranscriptResult)
+            return
+          }
+        } catch {
+          // stdout wasn't valid JSON, fall through to stderr check
+        }
+      }
+
       if (code !== 0) {
-        // Provide actionable error messages
         const errMsg = stderr.trim()
         if (errMsg.includes('No module named')) {
           reject(new Error(
-            'faster-whisper is not installed. Run: pip install faster-whisper\n' +
-            'Or switch to "api" mode in Settings.'
+            'faster-whisper is not installed.\nRun: pip install faster-whisper\nOr switch to "api" mode in Settings.'
           ))
         } else {
-          reject(new Error(`Transcription failed: ${errMsg || `exit code ${code}`}`))
+          reject(new Error(`Transcription failed: ${errMsg || stdout.trim() || `exit code ${code}`}`))
         }
         return
       }
 
-      try {
-        const result = JSON.parse(stdout) as TranscriptResult | { error: string }
-        if ('error' in result) {
-          reject(new Error(result.error))
-          return
-        }
-        resolve(result as TranscriptResult)
-      } catch {
-        reject(new Error(`Failed to parse transcription output: ${stdout}`))
-      }
+      reject(new Error('Transcription produced no output'))
     })
 
     proc.on('error', (err) => {

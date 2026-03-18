@@ -41,6 +41,8 @@ function createWindow(): void {
     }
   })
 
+  // Force transparent background on Windows (Chromium compositor workaround)
+  mainWindow.setBackgroundColor('#00000000')
   mainWindow.setVisibleOnAllWorkspaces(true)
 
   // Minimize to tray instead of closing
