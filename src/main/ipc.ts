@@ -2,8 +2,10 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { startRecording, pauseRecording, resumeRecording, stopRecording, getAudioDevices } from './recorder'
 import { getConfig, saveConfig } from './config'
 import { ConfigSchema } from '../shared/types'
+import { runPipeline } from './pipeline'
 
 let currentAudioPath = ''
+let recordingStartedAt: Date = new Date()
 
 export function registerIpcHandlers(): void {
   // Window controls
@@ -17,6 +19,7 @@ export function registerIpcHandlers(): void {
 
   // Recording
   ipcMain.handle('recording:start', () => {
+    recordingStartedAt = new Date()
     currentAudioPath = startRecording()
     console.log('[IPC] Recording started:', currentAudioPath)
   })
@@ -36,11 +39,13 @@ export function registerIpcHandlers(): void {
     currentAudioPath = audioPath
     console.log('[IPC] Recording stopped:', audioPath)
 
-    // Notify renderer that recording has stopped
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (win) {
-      // TODO: Task 16 will wire up the full pipeline here
-      win.webContents.send('recording:status', 'done')
+    if (win && audioPath) {
+      // Run full pipeline: transcribe → summarize → save → publish
+      runPipeline(audioPath, win, recordingStartedAt).catch((err) => {
+        console.error('[IPC] Pipeline error:', err)
+        win.webContents.send('recording:status', 'done')
+      })
     }
 
     return audioPath

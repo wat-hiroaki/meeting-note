@@ -4,6 +4,7 @@ import type { RecordingStatus } from './StatusIndicator'
 import { Timer } from './Timer'
 import { ControlButton } from './ControlButton'
 import { SettingsPanel } from './SettingsPanel'
+import { ProcessingStatus } from './ProcessingStatus'
 import { useRecording } from '../hooks/useRecording'
 
 // SVG icons as inline components
@@ -150,6 +151,9 @@ export function FloatingBar(): React.JSX.Element {
           </ControlButton>
         </div>
       </div>
+
+      {/* Processing Status */}
+      {status === 'processing' && <ProcessingStatus />}
 
       {/* Settings Panel */}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
