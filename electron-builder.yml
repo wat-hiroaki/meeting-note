@@ -1,0 +1,25 @@
+appId: com.meeting-note.app
+productName: meeting-note
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**/*
+  - "!out/renderer/src/**"
+extraResources:
+  - from: scripts/
+    to: scripts/
+    filter:
+      - "**/*.py"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+asar: true
