@@ -135,7 +135,10 @@ export function registerIpcHandlers(): void {
   // Check if Whisper model is already downloaded
   ipcMain.handle('system:checkWhisperModel', (_event, model: string) => {
     try {
-      const scriptPath = require('path').join(__dirname, '../../scripts/transcribe.py')
+      const { is } = require('@electron-toolkit/utils')
+    const scriptPath = is.dev
+      ? require('path').join(__dirname, '../../scripts/transcribe.py')
+      : require('path').join(process.resourcesPath, 'scripts/transcribe.py')
       const output = execSync(`python "${scriptPath}" --check-model --model ${model}`, {
         encoding: 'utf-8',
         timeout: 15000,
@@ -151,7 +154,10 @@ export function registerIpcHandlers(): void {
 
   // Download Whisper model (async, sends progress)
   ipcMain.handle('system:downloadWhisperModel', (event, model: string) => {
-    const scriptPath = require('path').join(__dirname, '../../scripts/transcribe.py')
+    const { is } = require('@electron-toolkit/utils')
+    const scriptPath = is.dev
+      ? require('path').join(__dirname, '../../scripts/transcribe.py')
+      : require('path').join(process.resourcesPath, 'scripts/transcribe.py')
     const { spawn: spawnProc } = require('child_process')
     const proc = spawnProc('python', [scriptPath, '--download-only', '--model', model], {
       windowsHide: true

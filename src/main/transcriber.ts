@@ -1,7 +1,16 @@
 import { spawn, execSync } from 'child_process'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { app } from 'electron'
+import { is } from '@electron-toolkit/utils'
 import { getConfig } from './config'
+
+function getScriptPath(): string {
+  if (is.dev) {
+    return join(__dirname, '../../scripts/transcribe.py')
+  }
+  return join(process.resourcesPath, 'scripts/transcribe.py')
+}
 
 export interface TranscriptSegment {
   start: number
@@ -30,7 +39,7 @@ export async function transcribe(audioPath: string): Promise<TranscriptResult> {
 
 async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
   const config = getConfig()
-  const scriptPath = join(__dirname, '../../scripts/transcribe.py')
+  const scriptPath = getScriptPath()
 
   // Check if script exists
   if (!existsSync(scriptPath)) {
