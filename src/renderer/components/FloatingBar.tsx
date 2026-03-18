@@ -5,6 +5,7 @@ import { ControlButton } from './ControlButton'
 import { SettingsPanel } from './SettingsPanel'
 import { ProcessingStatus } from './ProcessingStatus'
 import { useRecording } from '../hooks/useRecording'
+import { useConfig } from '../hooks/useConfig'
 
 // SVG icons as inline components
 function RecordIcon(): React.JSX.Element {
@@ -68,9 +69,51 @@ function CloseIcon(): React.JSX.Element {
 
 export function FloatingBar(): React.JSX.Element {
   const { status, seconds, error, outputPath, start, pause, resume, stop, dismiss } = useRecording()
+  const { config } = useConfig()
   const [showSettings, setShowSettings] = useState(false)
+  const [setupWarning, setSetupWarning] = useState<string | null>(null)
+  const [depsReady, setDepsReady] = useState<boolean | null>(null)
+
+  // Check if transcription & summary deps are configured
+  useEffect(() => {
+    const checkDeps = async (): Promise<void> => {
+      const issues: string[] = []
+
+      // Transcription check
+      if (config.transcription.mode === 'local') {
+        const pyOk = await window.electronAPI.checkPython().catch(() => false)
+        const whisperOk = await window.electronAPI.checkFasterWhisper().catch(() => false)
+        if (!pyOk) issues.push('Python not installed')
+        else if (!whisperOk) issues.push('faster-whisper not installed (pip install faster-whisper)')
+      } else if (config.transcription.mode === 'api') {
+        if (!config.transcription.apiKey) issues.push('OpenAI API key not set')
+      } else if (config.transcription.mode === 'remote') {
+        if (!config.transcription.remote.host) issues.push('Remote host not configured')
+      }
+
+      // Summary check
+      if (config.summary.mode === 'api') {
+        if (!config.summary.apiKey) issues.push('Anthropic API key not set')
+      }
+
+      if (issues.length > 0) {
+        setSetupWarning(issues.join('. ') + '. Open Settings to configure.')
+        setDepsReady(false)
+      } else {
+        setSetupWarning(null)
+        setDepsReady(true)
+      }
+    }
+    checkDeps()
+  }, [config])
 
   const handlePrimaryAction = useCallback((): void => {
+    // Block recording if deps not ready
+    if ((status === 'idle' || status === 'done' || status === 'error') && depsReady === false) {
+      setShowSettings(true)
+      return
+    }
+
     switch (status) {
       case 'idle':
       case 'done':
@@ -84,7 +127,7 @@ export function FloatingBar(): React.JSX.Element {
         resume()
         break
     }
-  }, [status, start, pause, resume])
+  }, [status, start, pause, resume, depsReady])
 
   const handleMinimize = useCallback((): void => {
     window.electronAPI.minimizeWindow()
@@ -96,16 +139,17 @@ export function FloatingBar(): React.JSX.Element {
 
   // Determine window mode
   const showExpandedPanel = status === 'processing' || status === 'done' || status === 'error'
+  const showWarningBar = setupWarning !== null && !showSettings && !showExpandedPanel && status === 'idle'
 
   useEffect(() => {
     if (showSettings) {
       window.electronAPI.setWindowMode('settings')
-    } else if (showExpandedPanel) {
+    } else if (showExpandedPanel || showWarningBar) {
       window.electronAPI.setWindowMode('expanded')
     } else {
       window.electronAPI.setWindowMode('bar')
     }
-  }, [showSettings, showExpandedPanel])
+  }, [showSettings, showExpandedPanel, showWarningBar])
 
   const canStop = status === 'recording' || status === 'paused'
   const isProcessing = status === 'processing'
@@ -170,6 +214,19 @@ export function FloatingBar(): React.JSX.Element {
           </ControlButton>
         </div>
       </div>
+
+      {/* Setup warning */}
+      {showWarningBar && (
+        <div
+          className="solid-panel rounded-2xl px-4 py-3 mt-1 no-drag cursor-pointer hover:border-yellow-500/30 transition-colors"
+          onClick={() => setShowSettings(true)}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-yellow-400 text-xs shrink-0">&#9888;</span>
+            <span className="text-white/60 text-xs">{setupWarning}</span>
+          </div>
+        </div>
+      )}
 
       {/* Processing / Done / Error panel */}
       {showExpandedPanel && !showSettings && (
