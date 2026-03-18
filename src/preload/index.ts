@@ -6,12 +6,18 @@ const api = {
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   closeWindow: (): Promise<void> => ipcRenderer.invoke('window:close'),
 
-  // Recording
-  startRecording: (options?: { micDevice?: string; systemDevice?: string }): Promise<void> => ipcRenderer.invoke('recording:start', options),
+  // Recording (legacy — kept for compatibility)
+  startRecording: (options?: { micDevice?: string }): Promise<void> => ipcRenderer.invoke('recording:start', options),
   pauseRecording: (): Promise<void> => ipcRenderer.invoke('recording:pause'),
   resumeRecording: (): Promise<void> => ipcRenderer.invoke('recording:resume'),
   stopRecording: (): Promise<void> => ipcRenderer.invoke('recording:stop'),
   getAudioDevices: (): Promise<string[]> => ipcRenderer.invoke('recording:devices'),
+
+  // Web Audio recording — saves webm buffer and converts to wav
+  saveAudio: (buffer: ArrayBuffer, metadata: { duration: number }): Promise<string> =>
+    ipcRenderer.invoke('recording:saveAudio', buffer, metadata),
+  convertToWav: (webmPath: string): Promise<string> =>
+    ipcRenderer.invoke('recording:convertToWav', webmPath),
 
   // File operations
   openPath: (path: string): Promise<void> => ipcRenderer.invoke('system:openPath', path),

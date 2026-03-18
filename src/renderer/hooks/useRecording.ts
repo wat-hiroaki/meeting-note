@@ -1,12 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { RecordingStatus } from '../components/StatusIndicator'
+import { useAudioRecorder } from './useAudioRecorder'
 
 interface UseRecordingReturn {
   status: RecordingStatus
   seconds: number
   error: string | null
   outputPath: string | null
-  start: (options?: { micDevice?: string; systemDevice?: string }) => void
+  start: (options?: { micDevice?: string }) => void
   pause: () => void
   resume: () => void
   stop: () => void
@@ -19,6 +20,8 @@ export function useRecording(): UseRecordingReturn {
   const [error, setError] = useState<string | null>(null)
   const [outputPath, setOutputPath] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const audioRecorder = useAudioRecorder()
 
   const startTimer = useCallback((): void => {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -34,39 +37,60 @@ export function useRecording(): UseRecordingReturn {
     }
   }, [])
 
-  const start = useCallback((options?: { micDevice?: string; systemDevice?: string }): void => {
+  const start = useCallback((options?: { micDevice?: string }): void => {
     setSeconds(0)
     setError(null)
     setOutputPath(null)
     setStatus('recording')
     startTimer()
-    window.electronAPI.startRecording(options).catch((err: unknown) => {
+
+    // Notify main process (for timestamp tracking)
+    window.electronAPI.startRecording(options).catch(() => { /* ignore */ })
+
+    // Start Web Audio recording
+    audioRecorder.start(options?.micDevice).catch((err: unknown) => {
       setStatus('error')
       setError(err instanceof Error ? err.message : 'Failed to start recording')
       stopTimer()
     })
-  }, [startTimer, stopTimer])
+  }, [startTimer, stopTimer, audioRecorder])
 
   const pause = useCallback((): void => {
     setStatus('paused')
     stopTimer()
-    window.electronAPI.pauseRecording().catch(console.error)
-  }, [stopTimer])
+    audioRecorder.pause()
+  }, [stopTimer, audioRecorder])
 
   const resume = useCallback((): void => {
     setStatus('recording')
     startTimer()
-    window.electronAPI.resumeRecording().catch(console.error)
-  }, [startTimer])
+    audioRecorder.resume()
+  }, [startTimer, audioRecorder])
 
   const stop = useCallback((): void => {
     setStatus('processing')
     stopTimer()
-    window.electronAPI.stopRecording().catch((err: unknown) => {
+
+    // Stop Web Audio recorder and get the buffer
+    audioRecorder.stop().then(async (buffer) => {
+      if (!buffer) {
+        setStatus('error')
+        setError('No audio data recorded')
+        return
+      }
+
+      // Send buffer to main process for saving + conversion + pipeline
+      try {
+        await window.electronAPI.saveAudio(buffer, { duration: seconds })
+      } catch (err: unknown) {
+        setStatus('error')
+        setError(err instanceof Error ? err.message : 'Failed to save recording')
+      }
+    }).catch((err: unknown) => {
       setStatus('error')
       setError(err instanceof Error ? err.message : 'Failed to stop recording')
     })
-  }, [stopTimer])
+  }, [stopTimer, audioRecorder, seconds])
 
   const dismiss = useCallback((): void => {
     setStatus('idle')

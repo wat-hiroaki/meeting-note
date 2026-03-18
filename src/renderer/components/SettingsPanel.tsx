@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { useConfig } from '../hooks/useConfig'
 
 interface SettingsPanelProps {
@@ -80,11 +80,6 @@ const mod = isMac ? 'Cmd' : 'Ctrl'
 export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Element {
   const { config, updateConfig, loading } = useConfig()
   const [saved, setSaved] = useState(false)
-  const [audioDevices, setAudioDevices] = useState<string[]>([])
-
-  useEffect(() => {
-    window.electronAPI.getAudioDevices().then(setAudioDevices).catch(() => setAudioDevices([]))
-  }, [])
 
   const handleUpdate = useCallback((updates: Parameters<typeof updateConfig>[0]): void => {
     updateConfig(updates)
@@ -124,34 +119,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
 
       {/* Recording */}
       <Section title="Recording">
+        <div className="rounded-lg px-3 py-2 bg-green-500/5 text-green-400/70 text-[10px] leading-relaxed">
+          System audio is captured automatically via WASAPI loopback.
+        </div>
         <SettingRow label="Microphone">
           <Select
             value={config.recording.micDevice}
             onChange={(v) => handleUpdate({ recording: { ...config.recording, micDevice: v } })}
             options={[
               { value: 'default', label: 'Auto-detect' },
-              ...audioDevices.map(d => ({ value: d, label: d })),
-              { value: 'none', label: 'None (disabled)' }
+              { value: 'none', label: 'None (system audio only)' }
             ]}
           />
         </SettingRow>
-        <SettingRow label="System Audio">
-          <Select
-            value={config.recording.systemDevice}
-            onChange={(v) => handleUpdate({ recording: { ...config.recording, systemDevice: v } })}
-            options={[
-              { value: 'none', label: 'None (mic only)' },
-              ...audioDevices.map(d => ({ value: d, label: d })),
-            ]}
-          />
-        </SettingRow>
-        {config.recording.systemDevice === 'none' && (
-          <div className="rounded-lg px-3 py-2 bg-yellow-500/5 text-yellow-400/70 text-[10px] leading-relaxed">
-            {isMac
-              ? 'To capture system audio on macOS, install BlackHole (brew install blackhole-2ch) and select it as System Audio.'
-              : 'To capture system audio, enable "Stereo Mix" in Windows Sound settings, or install VB-Cable and select it as System Audio.'}
-          </div>
-        )}
       </Section>
 
       {/* Transcription */}

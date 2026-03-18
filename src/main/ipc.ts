@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, shell, clipboard, app } from 'electron'
 import { execSync } from 'child_process'
-import { startRecording, pauseRecording, resumeRecording, stopRecording, getAudioDevices } from './recorder'
+import { saveAudioBuffer, convertWebmToWav } from './recorder'
 import { getConfig, saveConfig } from './config'
 import { ConfigSchema } from '../shared/types'
 import { runPipeline } from './pipeline'
@@ -18,42 +18,55 @@ export function registerIpcHandlers(): void {
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
 
-  // Recording
-  ipcMain.handle('recording:start', (_event, options?: { micDevice?: string; systemDevice?: string }) => {
+  // Recording — Web Audio API based (renderer captures audio, main saves/converts)
+  ipcMain.handle('recording:start', () => {
     recordingStartedAt = new Date()
-    currentAudioPath = startRecording(options)
-    console.log('[IPC] Recording started:', currentAudioPath)
+    console.log('[IPC] Recording started (Web Audio mode)')
   })
 
   ipcMain.handle('recording:pause', () => {
-    pauseRecording()
     console.log('[IPC] Recording paused')
   })
 
   ipcMain.handle('recording:resume', () => {
-    resumeRecording()
     console.log('[IPC] Recording resumed')
   })
 
-  ipcMain.handle('recording:stop', async (event) => {
-    const audioPath = await stopRecording()
-    currentAudioPath = audioPath
-    console.log('[IPC] Recording stopped:', audioPath)
+  ipcMain.handle('recording:stop', () => {
+    console.log('[IPC] Recording stopped (Web Audio mode)')
+  })
 
+  ipcMain.handle('recording:devices', async () => {
+    // Return empty — renderer uses navigator.mediaDevices.enumerateDevices()
+    return []
+  })
+
+  // Save webm audio buffer from renderer
+  ipcMain.handle('recording:saveAudio', async (event, buffer: ArrayBuffer, metadata: { duration: number }) => {
+    const webmPath = saveAudioBuffer(Buffer.from(buffer))
+    console.log('[IPC] Audio saved:', webmPath, 'duration:', metadata.duration)
+
+    // Convert to WAV for Whisper
+    const wavPath = await convertWebmToWav(webmPath)
+    currentAudioPath = wavPath
+    console.log('[IPC] Converted to WAV:', wavPath)
+
+    // Run pipeline
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && audioPath) {
-      runPipeline(audioPath, win, recordingStartedAt).catch((err) => {
+    if (win && wavPath) {
+      runPipeline(wavPath, win, recordingStartedAt).catch((err) => {
         console.error('[IPC] Pipeline error:', err)
         win.webContents.send('pipeline:error', err instanceof Error ? err.message : 'Pipeline failed')
         win.webContents.send('recording:status', 'error')
       })
     }
 
-    return audioPath
+    return wavPath
   })
 
-  ipcMain.handle('recording:devices', () => {
-    return getAudioDevices()
+  // Convert webm to wav (standalone)
+  ipcMain.handle('recording:convertToWav', async (_event, webmPath: string) => {
+    return await convertWebmToWav(webmPath)
   })
 
   // App lifecycle

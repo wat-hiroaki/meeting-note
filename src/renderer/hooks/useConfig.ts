@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 
 interface ConfigData {
-  recording: { micDevice: string; systemDevice: string }
+  recording: { micDevice: string }
   transcription: {
     mode: string
     model: string
@@ -17,7 +17,7 @@ interface ConfigData {
 }
 
 const defaultConfig: ConfigData = {
-  recording: { micDevice: 'default', systemDevice: 'none' },
+  recording: { micDevice: 'default' },
   transcription: {
     mode: 'local',
     model: 'large-v3',

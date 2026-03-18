@@ -122,8 +122,7 @@ export function FloatingBar(): React.JSX.Element {
       case 'done':
       case 'error':
         start({
-          micDevice: config.recording.micDevice,
-          systemDevice: config.recording.systemDevice
+          micDevice: config.recording.micDevice
         })
         break
       case 'recording':

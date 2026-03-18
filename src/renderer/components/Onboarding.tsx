@@ -10,7 +10,6 @@ const steps: Step[] = ['welcome', 'transcription', 'summary', 'output', 'done']
 
 interface SetupState {
   micDevice: string
-  systemDevice: string
   language: string
   transcriptionMode: string
   whisperModel: string
@@ -105,10 +104,8 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   const [modelSize, setModelSize] = useState<string>('')
   const [downloading, setDownloading] = useState(false)
   const [downloadDone, setDownloadDone] = useState(false)
-  const [audioDevices, setAudioDevices] = useState<string[]>([])
   const [setup, setSetup] = useState<SetupState>({
     micDevice: 'default',
-    systemDevice: 'none',
     language: 'en',
     transcriptionMode: 'local',
     whisperModel: 'small',
@@ -128,7 +125,6 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     window.electronAPI.checkPython().then(setPythonOk).catch(() => setPythonOk(false))
     window.electronAPI.checkFasterWhisper().then(setWhisperOk).catch(() => setWhisperOk(false))
     window.electronAPI.checkClaudeCli().then(setClaudeCliOk).catch(() => setClaudeCliOk(false))
-    window.electronAPI.getAudioDevices().then(setAudioDevices).catch(() => setAudioDevices([]))
   }, [])
 
   // Check model cache when local mode + deps ready
@@ -170,8 +166,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   const handleFinish = (): void => {
     window.electronAPI.setConfig({
       recording: {
-        micDevice: setup.micDevice,
-        systemDevice: setup.systemDevice
+        micDevice: setup.micDevice
       },
       transcription: {
         mode: setup.transcriptionMode,
@@ -218,7 +213,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
               </p>
             </div>
 
-            {/* FFmpeg status */}
+            {/* FFmpeg status (needed for webm→wav conversion) */}
             <div className={`rounded-xl px-4 py-3 text-sm ${
               ffmpegOk === null ? 'bg-white/5 text-white/40' :
               ffmpegOk ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400 border border-red-500/20'
@@ -235,7 +230,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                     <span>&#10007;</span> FFmpeg is required
                   </div>
                   <div className="text-xs text-red-400/70">
-                    Recording depends on FFmpeg. Install it first:
+                    FFmpeg is needed to convert audio for transcription. Install it first:
                   </div>
                   <code className="block text-xs bg-white/5 rounded-lg px-3 py-1.5 text-white/70 font-mono">
                     {installCmd}
@@ -244,50 +239,33 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
               )}
             </div>
 
-            {/* Audio devices */}
-            {ffmpegOk && audioDevices.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-white/30 text-[10px] uppercase tracking-wider">Audio capture</div>
-                <div className="space-y-1.5">
-                  <div className="space-y-1">
-                    <label className="text-white/50 text-xs">Microphone (your voice)</label>
-                    <select
-                      value={setup.micDevice}
-                      onChange={(e) => setSetup(s => ({ ...s, micDevice: e.target.value }))}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25"
-                    >
-                      <option value="default">Auto-detect</option>
-                      {audioDevices.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-white/50 text-xs">System audio (others' voices)</label>
-                    <select
-                      value={setup.systemDevice}
-                      onChange={(e) => setSetup(s => ({ ...s, systemDevice: e.target.value }))}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25"
-                    >
-                      <option value="none">None (mic only)</option>
-                      {audioDevices.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                  {setup.systemDevice === 'none' && (
-                    <p className="text-yellow-400/60 text-[10px] leading-relaxed">
-                      {isMac
-                        ? 'To capture meeting audio from others, install BlackHole: brew install blackhole-2ch'
-                        : 'To capture meeting audio from others, enable "Stereo Mix" in Windows Sound Settings, or install VB-Cable.'}
-                    </p>
-                  )}
+            {/* Audio capture info */}
+            <div className="space-y-2">
+              <div className="text-white/30 text-[10px] uppercase tracking-wider">Audio capture</div>
+              <div className="rounded-xl bg-green-500/5 border border-green-500/10 px-4 py-3">
+                <div className="flex items-center gap-2 text-green-400 text-xs">
+                  <span>&#10003;</span> System audio is captured automatically via WASAPI loopback
                 </div>
               </div>
-            )}
+              <div className="space-y-1">
+                <label className="text-white/50 text-xs">Microphone (your voice)</label>
+                <select
+                  value={setup.micDevice}
+                  onChange={(e) => setSetup(s => ({ ...s, micDevice: e.target.value }))}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25"
+                >
+                  <option value="default">Auto-detect</option>
+                  <option value="none">None (system audio only)</option>
+                </select>
+              </div>
+            </div>
 
             {/* How it works */}
             <div className="space-y-2">
               <div className="text-white/30 text-[10px] uppercase tracking-wider">How it works</div>
               <div className="space-y-1.5">
                 {[
-                  ['🎙', 'Record', 'Capture system audio via FFmpeg'],
+                  ['🎙', 'Record', 'Capture system + mic audio via Web Audio API'],
                   ['📝', 'Transcribe', 'Whisper converts speech to text'],
                   ['🤖', 'Summarize', 'Claude generates meeting notes'],
                   ['📤', 'Share', 'Save as MD, push to Notion/Slack']
@@ -626,8 +604,8 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
             <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-4 py-3 space-y-1">
               <div className="text-white/50 text-[10px] uppercase tracking-wider">Your setup</div>
               <div className="text-white/60 text-xs space-y-0.5">
-                <div>Mic: <span className="text-white/80">{setup.micDevice === 'default' ? 'Auto-detect' : setup.micDevice}</span></div>
-                <div>System audio: <span className="text-white/80">{setup.systemDevice === 'none' ? 'Off' : setup.systemDevice}</span></div>
+                <div>Mic: <span className="text-white/80">{setup.micDevice === 'default' ? 'Auto-detect' : setup.micDevice === 'none' ? 'Disabled' : setup.micDevice}</span></div>
+                <div>System audio: <span className="text-white/80">Automatic (WASAPI loopback)</span></div>
                 <div>Transcription: <span className="text-white/80">{setup.transcriptionMode}{setup.transcriptionMode === 'local' ? ` (${setup.whisperModel})` : ''}</span></div>
                 <div>Language: <span className="text-white/80">{LANG_OPTIONS.find(l => l.value === setup.language)?.label || setup.language}</span></div>
                 <div>Summary: <span className="text-white/80">{setup.summaryMode === 'cli' ? 'Claude CLI' : 'Anthropic API'}</span></div>
