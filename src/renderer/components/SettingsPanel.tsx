@@ -170,12 +170,42 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         {config.transcription.mode === 'api' && (
           <SettingRow label="OpenAI Key">
             <Input
-              value={config.transcription.apiKey || ''}
-              onChange={(v) => handleUpdate({ transcription: { ...config.transcription, apiKey: v } })}
+              value={config.transcription.api?.apiKey || ''}
+              onChange={(v) => handleUpdate({ transcription: { ...config.transcription, api: { ...config.transcription.api, apiKey: v } } })}
               type="password"
               placeholder="sk-..."
             />
           </SettingRow>
+        )}
+        {config.transcription.mode === 'remote' && (
+          <div className="pl-4 space-y-2">
+            <SettingRow label="Host">
+              <Input
+                value={config.transcription.remote?.host || ''}
+                onChange={(v) => handleUpdate({ transcription: { ...config.transcription, remote: { ...config.transcription.remote, host: v } } })}
+              />
+            </SettingRow>
+            <SettingRow label="User">
+              <Input
+                value={config.transcription.remote?.user || ''}
+                onChange={(v) => handleUpdate({ transcription: { ...config.transcription, remote: { ...config.transcription.remote, user: v } } })}
+              />
+            </SettingRow>
+            <SettingRow label="Python Path">
+              <Input
+                value={config.transcription.remote?.pythonPath || 'python3'}
+                onChange={(v) => handleUpdate({ transcription: { ...config.transcription, remote: { ...config.transcription.remote, pythonPath: v } } })}
+                placeholder="python3"
+              />
+            </SettingRow>
+            <SettingRow label="Script Path">
+              <Input
+                value={config.transcription.remote?.scriptPath || '~/transcribe.py'}
+                onChange={(v) => handleUpdate({ transcription: { ...config.transcription, remote: { ...config.transcription.remote, scriptPath: v } } })}
+                placeholder="~/transcribe.py"
+              />
+            </SettingRow>
+          </div>
         )}
         <SettingRow label="Language">
           <Select
@@ -213,8 +243,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         {config.summary.mode === 'api' && (
           <SettingRow label="Anthropic Key">
             <Input
-              value={config.summary.apiKey || ''}
-              onChange={(v) => handleUpdate({ summary: { ...config.summary, apiKey: v } })}
+              value={config.summary.api?.apiKey || ''}
+              onChange={(v) => handleUpdate({ summary: { ...config.summary, api: { ...config.summary.api, apiKey: v } } })}
               type="password"
               placeholder="sk-ant-..."
             />

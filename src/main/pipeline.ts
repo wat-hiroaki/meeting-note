@@ -55,7 +55,7 @@ export async function runPipeline(audioPath: string, win: BrowserWindow, started
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error'
         console.error('[Pipeline] Notion publish failed:', msg)
-        errors.push(`Notion: ${msg}`)
+        errors.push(`Notion publish failed: ${msg}. Check your API key and database ID in Settings.`)
       }
     }
 
@@ -65,7 +65,7 @@ export async function runPipeline(audioPath: string, win: BrowserWindow, started
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error'
         console.error('[Pipeline] Slack publish failed:', msg)
-        errors.push(`Slack: ${msg}`)
+        errors.push(`Slack publish failed: ${msg}. Check your token and channel in Settings.`)
       }
     }
 
@@ -75,7 +75,7 @@ export async function runPipeline(audioPath: string, win: BrowserWindow, started
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error'
         console.error('[Pipeline] Remote publish failed:', msg)
-        errors.push(`Remote: ${msg}`)
+        errors.push(`Remote SCP failed: ${msg}. Check SSH connection settings.`)
       }
     }
 

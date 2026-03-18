@@ -2,8 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 
 interface ConfigData {
   recording: { micDevice: string; systemDevice: string }
-  transcription: { mode: string; model: string; language: string; apiKey?: string; remote: { host: string; user: string } }
-  summary: { mode: string; language: string; apiKey?: string }
+  transcription: {
+    mode: string
+    model: string
+    language: string
+    remote: { host: string; user: string; pythonPath: string; scriptPath: string }
+    api: { apiKey: string; model: string }
+  }
+  summary: { mode: string; language: string; api: { apiKey: string; model: string; maxTokens: number } }
   output: { directory: string }
   notion: { enabled: boolean; apiKey: string; databaseId: string }
   slack: { enabled: boolean; token: string; channel: string }
@@ -12,8 +18,14 @@ interface ConfigData {
 
 const defaultConfig: ConfigData = {
   recording: { micDevice: 'default', systemDevice: 'none' },
-  transcription: { mode: 'local', model: 'large-v3', language: 'en', apiKey: '', remote: { host: '', user: '' } },
-  summary: { mode: 'cli', language: 'en', apiKey: '' },
+  transcription: {
+    mode: 'local',
+    model: 'large-v3',
+    language: 'en',
+    remote: { host: '', user: '', pythonPath: 'python3', scriptPath: '~/transcribe.py' },
+    api: { apiKey: '', model: 'whisper-1' }
+  },
+  summary: { mode: 'cli', language: 'en', api: { apiKey: '', model: 'claude-sonnet-4-20250514', maxTokens: 4096 } },
   output: { directory: './meetings' },
   notion: { enabled: false, apiKey: '', databaseId: '' },
   slack: { enabled: false, token: '', channel: '' },

@@ -12,12 +12,14 @@
   },
   "author": "wat-hiroaki",
   "license": "MIT",
+  "dependencies": {
+    "@notionhq/client": "^2.3.0",
+    "@slack/web-api": "^7.9.1"
+  },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
-    "@notionhq/client": "^2.3.0",
-    "@slack/web-api": "^7.9.1",
     "@tailwindcss/vite": "^4.1.3",
     "@types/node": "^22.13.11",
     "@types/react": "^19.0.12",

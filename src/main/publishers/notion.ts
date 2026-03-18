@@ -55,20 +55,29 @@ export async function publishToNotion(data: MeetingData): Promise<string> {
           rich_text: [{ type: 'text', text: { content: `Transcript (${durationMin}min)` } }]
         }
       },
-      ...data.transcript.segments.map(seg => ({
-        object: 'block' as const,
-        type: 'paragraph' as const,
-        paragraph: {
-          rich_text: [
-            {
-              type: 'text' as const,
-              text: { content: `[${formatTime(seg.start)}] ` },
-              annotations: { bold: true, italic: false, strikethrough: false, underline: false, code: false, color: 'default' as const }
-            },
-            { type: 'text' as const, text: { content: seg.text } }
-          ]
-        }
-      }))
+      ...(data.transcript.segments.length > 0
+        ? data.transcript.segments.map(seg => ({
+            object: 'block' as const,
+            type: 'paragraph' as const,
+            paragraph: {
+              rich_text: [
+                {
+                  type: 'text' as const,
+                  text: { content: `[${formatTime(seg.start)}] ` },
+                  annotations: { bold: true, italic: false, strikethrough: false, underline: false, code: false, color: 'default' as const }
+                },
+                { type: 'text' as const, text: { content: seg.text } }
+              ]
+            }
+          }))
+        : [{
+            object: 'block' as const,
+            type: 'paragraph' as const,
+            paragraph: {
+              rich_text: [{ type: 'text' as const, text: { content: 'No transcript segments recorded.' } }]
+            }
+          }]
+      )
     ]
   })
 

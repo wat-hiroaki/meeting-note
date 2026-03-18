@@ -23,6 +23,10 @@ const SUMMARY_PROMPT = `以下の会議の文字起こしを要約してくだ�
 `
 
 export async function summarize(transcript: TranscriptResult): Promise<string> {
+  if (!transcript.segments || transcript.segments.length === 0) {
+    return 'No speech detected in recording.'
+  }
+
   const config = getConfig()
   const text = transcript.segments.map(s => `[${formatTime(s.start)}] ${s.text}`).join('\n')
   const prompt = SUMMARY_PROMPT + text
@@ -59,7 +63,8 @@ async function summarizeCLI(prompt: string): Promise<string> {
         reject(new Error(`Claude CLI failed (code ${code}): ${stderr}`))
         return
       }
-      resolve(stdout.trim())
+      const result = stdout.trim()
+      resolve(result || 'Summary could not be generated.')
     })
 
     proc.on('error', (err) => {
@@ -94,7 +99,10 @@ async function summarizeAPI(prompt: string): Promise<string> {
   })
 
   const textBlock = message.content.find(b => b.type === 'text')
-  return textBlock?.text || ''
+  if (!textBlock) {
+    return 'Summary could not be generated.'
+  }
+  return textBlock.text || 'Summary could not be generated.'
 }
 
 function formatTime(seconds: number): string {

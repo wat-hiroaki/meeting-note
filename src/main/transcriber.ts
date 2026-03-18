@@ -139,18 +139,29 @@ async function transcribeRemote(audioPath: string): Promise<TranscriptResult> {
   const remoteAudioPath = `/tmp/meeting-note-${Date.now()}.wav`
   const sshTarget = `${user}@${host}`
 
-  // 1. SCP upload
-  execSync(`scp "${audioPath}" "${sshTarget}:${remoteAudioPath}"`, {
-    timeout: 120000
-  })
+  try {
+    // 1. SCP upload
+    execSync(`scp "${audioPath}" "${sshTarget}:${remoteAudioPath}"`, {
+      timeout: 120000
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error'
+    throw new Error(`Remote transcription: failed to upload audio file via SCP. Check SSH connection to ${host}. ${msg}`)
+  }
 
-  // 2. SSH execute
-  const cmd = `${pythonPath} ${scriptPath} "${remoteAudioPath}" --model ${config.transcription.model} --language ${config.transcription.language} --output json`
+  let output: string
+  try {
+    // 2. SSH execute
+    const cmd = `${pythonPath} ${scriptPath} "${remoteAudioPath}" --model ${config.transcription.model} --language ${config.transcription.language} --output json`
 
-  const output = execSync(`ssh "${sshTarget}" "${cmd}"`, {
-    encoding: 'utf-8',
-    timeout: 600000 // 10 min for large files
-  })
+    output = execSync(`ssh "${sshTarget}" "${cmd}"`, {
+      encoding: 'utf-8',
+      timeout: 600000 // 10 min for large files
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error'
+    throw new Error(`Remote transcription: script execution failed on ${host}. Check that Python and the transcription script are available. ${msg}`)
+  }
 
   // 3. Cleanup remote file
   try {
@@ -160,7 +171,7 @@ async function transcribeRemote(audioPath: string): Promise<TranscriptResult> {
   // 4. Parse result
   const result = JSON.parse(output) as TranscriptResult | { error: string }
   if ('error' in result) {
-    throw new Error(result.error)
+    throw new Error(`Remote transcription: ${result.error}`)
   }
 
   return result as TranscriptResult
@@ -198,7 +209,7 @@ async function transcribeAPI(audioPath: string): Promise<TranscriptResult> {
 
   if (!response.ok) {
     const error = await response.text()
-    throw new Error(`OpenAI Whisper API error (${response.status}): ${error}`)
+    throw new Error(`OpenAI Whisper API: request failed (${response.status}): ${error}`)
   }
 
   const data = await response.json() as {
@@ -212,9 +223,9 @@ async function transcribeAPI(audioPath: string): Promise<TranscriptResult> {
     language: data.language || config.transcription.language,
     duration: data.duration || 0,
     segments: data.segments?.map(s => ({
-      start: Math.round(s.start * 100) / 100,
-      end: Math.round(s.end * 100) / 100,
-      text: s.text.trim()
+      start: Math.round((s.start ?? 0) * 100) / 100,
+      end: Math.round((s.end ?? 0) * 100) / 100,
+      text: (s.text ?? '').trim()
     })) || [{ start: 0, end: data.duration || 0, text: data.text }]
   }
 }
