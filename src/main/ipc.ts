@@ -81,12 +81,28 @@ export function registerIpcHandlers(): void {
 
   // System checks
   ipcMain.handle('system:checkFfmpeg', () => {
+    // Check PATH first
     try {
       execSync('ffmpeg -version', { timeout: 5000, stdio: 'pipe', windowsHide: true })
       return true
-    } catch {
-      return false
+    } catch { /* not in PATH */ }
+
+    // Check known install locations (winget, homebrew)
+    if (process.platform === 'win32') {
+      const wingetBase = require('path').join(
+        process.env['LOCALAPPDATA'] || '',
+        'Microsoft/WinGet/Packages'
+      )
+      try {
+        const dirs = require('fs').readdirSync(wingetBase) as string[]
+        if (dirs.some((d: string) => d.startsWith('Gyan.FFmpeg'))) return true
+      } catch { /* ignore */ }
     }
+    if (process.platform === 'darwin') {
+      const { existsSync } = require('fs')
+      if (existsSync('/opt/homebrew/bin/ffmpeg') || existsSync('/usr/local/bin/ffmpeg')) return true
+    }
+    return false
   })
 
   ipcMain.handle('system:checkPython', () => {

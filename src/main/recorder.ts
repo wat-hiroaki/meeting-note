@@ -2,7 +2,7 @@ import { spawn, execSync } from 'child_process'
 import type { ChildProcess } from 'child_process'
 import { join } from 'path'
 import { app } from 'electron'
-import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 
 interface RecorderState {
   process: ChildProcess | null
@@ -28,13 +28,78 @@ function getTempDir(): string {
   return dir
 }
 
+// Resolve ffmpeg binary — check PATH first, then known install locations
+let ffmpegPath: string | null = null
+function getFfmpegPath(): string {
+  if (ffmpegPath) return ffmpegPath
+
+  // Try PATH first
+  try {
+    execSync('ffmpeg -version', { timeout: 3000, stdio: 'pipe', windowsHide: true })
+    ffmpegPath = 'ffmpeg'
+    return ffmpegPath
+  } catch { /* not in PATH */ }
+
+  // Windows: check winget install location
+  if (process.platform === 'win32') {
+    const wingetBase = join(
+      process.env['LOCALAPPDATA'] || '',
+      'Microsoft/WinGet/Packages'
+    )
+    if (existsSync(wingetBase)) {
+      try {
+        const { readdirSync } = require('fs')
+        const dirs = readdirSync(wingetBase) as string[]
+        const ffmpegDir = dirs.find((d: string) => d.startsWith('Gyan.FFmpeg'))
+        if (ffmpegDir) {
+          const binDir = join(wingetBase, ffmpegDir)
+          // Search for ffmpeg.exe recursively in the package
+          const findBin = (dir: string): string | null => {
+            const entries = readdirSync(dir, { withFileTypes: true })
+            for (const entry of entries) {
+              const fullPath = join(dir, entry.name)
+              if (entry.isFile() && entry.name === 'ffmpeg.exe') return fullPath
+              if (entry.isDirectory()) {
+                const found = findBin(fullPath)
+                if (found) return found
+              }
+            }
+            return null
+          }
+          const found = findBin(binDir)
+          if (found) {
+            ffmpegPath = found
+            return ffmpegPath
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  // macOS: check homebrew locations
+  if (process.platform === 'darwin') {
+    const brewPaths = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg']
+    for (const p of brewPaths) {
+      if (existsSync(p)) {
+        ffmpegPath = p
+        return ffmpegPath
+      }
+    }
+  }
+
+  // Fallback — will likely fail with ENOENT but gives a clear error
+  ffmpegPath = 'ffmpeg'
+  return ffmpegPath
+}
+
 const isMac = process.platform === 'darwin'
 
 export function getAudioDevices(): string[] {
   try {
+    const bin = getFfmpegPath()
     const cmd = isMac
-      ? 'ffmpeg -f avfoundation -list_devices true -i "" 2>&1'
-      : 'ffmpeg -list_devices true -f dshow -i dummy 2>&1'
+      ? `"${bin}" -f avfoundation -list_devices true -i "" 2>&1`
+      : `"${bin}" -list_devices true -f dshow -i dummy 2>&1`
     const result = execSync(cmd, {
       encoding: 'utf-8',
       timeout: 5000,
@@ -125,7 +190,7 @@ function startSegment(): string {
         segmentPath
       ]
 
-  state.process = spawn('ffmpeg', args)
+  state.process = spawn(getFfmpegPath(), args)
 
   state.process.stderr?.on('data', (data: Buffer) => {
     const msg = data.toString()
