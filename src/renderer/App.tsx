@@ -12,12 +12,14 @@ export function App(): React.JSX.Element {
     }).catch(() => setOnboarded(false))
   }, [])
 
-  // Resize window based on mode
+  // Resize window based on mode and set background transparency class
   useEffect(() => {
     if (onboarded === null) return
     if (onboarded) {
+      document.documentElement.classList.add('transparent')
       window.electronAPI.setWindowMode('bar')
     } else {
+      document.documentElement.classList.remove('transparent')
       window.electronAPI.setWindowMode('onboarding')
     }
   }, [onboarded])

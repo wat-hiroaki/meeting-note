@@ -165,6 +165,7 @@ export function registerIpcHandlers(): void {
       ? require('path').join(__dirname, '../../scripts/transcribe.py')
       : require('path').join(process.resourcesPath, 'scripts/transcribe.py')
     const { spawn: spawnProc } = require('child_process')
+    console.log('[IPC] Downloading whisper model:', model, 'script:', scriptPath)
     const proc = spawnProc('python', [scriptPath, '--download-only', '--model', model], {
       windowsHide: true
     })
@@ -173,8 +174,9 @@ export function registerIpcHandlers(): void {
     let stdout = ''
 
     proc.stdout?.on('data', (data: Buffer) => {
-      stdout += data.toString()
-      // Parse line-delimited JSON
+      const chunk = data.toString()
+      stdout += chunk
+      console.log('[Whisper DL stdout]', chunk.trim())
       const lines = stdout.split('\n').filter(Boolean)
       for (const line of lines) {
         try {
@@ -185,8 +187,8 @@ export function registerIpcHandlers(): void {
     })
 
     proc.stderr?.on('data', (data: Buffer) => {
-      // Model download progress goes to stderr via huggingface_hub
       const msg = data.toString()
+      console.log('[Whisper DL stderr]', msg.trim())
       if (win && msg.includes('%')) {
         win.webContents.send('whisper:download-progress', msg.trim())
       }
@@ -194,9 +196,13 @@ export function registerIpcHandlers(): void {
 
     return new Promise<boolean>((resolve) => {
       proc.on('close', (code: number) => {
+        console.log('[Whisper DL] Process exited with code:', code)
         resolve(code === 0)
       })
-      proc.on('error', () => resolve(false))
+      proc.on('error', (err: Error) => {
+        console.error('[Whisper DL] Spawn error:', err.message)
+        resolve(false)
+      })
     })
   })
 

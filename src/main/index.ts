@@ -28,7 +28,7 @@ function createWindow(): void {
     height: isOnboarded ? 72 : 680,
     frame: false,
     transparent: isOnboarded,
-    backgroundColor: isOnboarded ? '#00000000' : '#13131a',
+    backgroundColor: isOnboarded ? '#00000000' : '#1e1e28',
     hasShadow: !isOnboarded,
     alwaysOnTop: true,
     resizable: false,
