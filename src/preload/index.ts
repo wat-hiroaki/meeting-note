@@ -23,6 +23,7 @@ const api = {
 
   // System checks
   checkFfmpeg: (): Promise<boolean> => ipcRenderer.invoke('system:checkFfmpeg'),
+  checkClaudeCli: (): Promise<boolean> => ipcRenderer.invoke('system:checkClaudeCli'),
   checkPython: (): Promise<boolean> => ipcRenderer.invoke('system:checkPython'),
   checkFasterWhisper: (): Promise<boolean> => ipcRenderer.invoke('system:checkFasterWhisper'),
   checkWhisperModel: (model: string): Promise<{ cached: boolean; model: string; size: string }> => ipcRenderer.invoke('system:checkWhisperModel', model),

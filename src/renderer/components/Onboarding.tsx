@@ -4,12 +4,14 @@ interface OnboardingProps {
   onComplete: () => void
 }
 
-type Step = 'welcome' | 'transcription' | 'summary' | 'done'
+type Step = 'welcome' | 'transcription' | 'summary' | 'output' | 'done'
 
-const steps: Step[] = ['welcome', 'transcription', 'summary', 'done']
+const steps: Step[] = ['welcome', 'transcription', 'summary', 'output', 'done']
 
 interface SetupState {
+  language: string
   transcriptionMode: string
+  whisperModel: string
   whisperApiKey: string
   remoteHost: string
   remoteUser: string
@@ -17,6 +19,7 @@ interface SetupState {
   remoteScriptPath: string
   summaryMode: string
   anthropicApiKey: string
+  outputDirectory: string
 }
 
 const isMac = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'
@@ -72,24 +75,46 @@ function ProgressDots({ current }: { current: Step }): React.JSX.Element {
   )
 }
 
+const MODEL_OPTIONS = [
+  { value: 'large-v3', label: 'large-v3', size: '~3 GB', desc: 'Best quality, slowest' },
+  { value: 'medium', label: 'medium', size: '~1.5 GB', desc: 'Good balance' },
+  { value: 'small', label: 'small', size: '~500 MB', desc: 'Fast, decent quality' },
+  { value: 'base', label: 'base', size: '~150 MB', desc: 'Fastest, lower quality' },
+]
+
+const LANG_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'zh', label: 'Chinese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'de', label: 'German' },
+  { value: 'fr', label: 'French' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'auto', label: 'Auto-detect' },
+]
+
 export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
   const [step, setStep] = useState<Step>('welcome')
   const [ffmpegOk, setFfmpegOk] = useState<boolean | null>(null)
   const [pythonOk, setPythonOk] = useState<boolean | null>(null)
   const [whisperOk, setWhisperOk] = useState<boolean | null>(null)
+  const [claudeCliOk, setClaudeCliOk] = useState<boolean | null>(null)
   const [modelCached, setModelCached] = useState<boolean | null>(null)
   const [modelSize, setModelSize] = useState<string>('')
   const [downloading, setDownloading] = useState(false)
   const [downloadDone, setDownloadDone] = useState(false)
   const [setup, setSetup] = useState<SetupState>({
+    language: 'en',
     transcriptionMode: 'local',
+    whisperModel: 'small',
     whisperApiKey: '',
     remoteHost: '',
     remoteUser: '',
     remotePythonPath: 'python3',
     remoteScriptPath: '~/transcribe.py',
     summaryMode: 'cli',
-    anthropicApiKey: ''
+    anthropicApiKey: '',
+    outputDirectory: './meetings'
   })
 
   // Check system deps on mount
@@ -97,45 +122,51 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     window.electronAPI.checkFfmpeg().then(setFfmpegOk).catch(() => setFfmpegOk(false))
     window.electronAPI.checkPython().then(setPythonOk).catch(() => setPythonOk(false))
     window.electronAPI.checkFasterWhisper().then(setWhisperOk).catch(() => setWhisperOk(false))
+    window.electronAPI.checkClaudeCli().then(setClaudeCliOk).catch(() => setClaudeCliOk(false))
   }, [])
 
-  // Check model cache when on transcription step with local mode
+  // Check model cache when local mode + deps ready
   useEffect(() => {
     if (step === 'transcription' && setup.transcriptionMode === 'local' && whisperOk) {
-      window.electronAPI.checkWhisperModel('large-v3').then((result) => {
+      setModelCached(null)
+      setDownloadDone(false)
+      window.electronAPI.checkWhisperModel(setup.whisperModel).then((result) => {
         setModelCached(result.cached)
         setModelSize(result.size)
       }).catch(() => setModelCached(false))
     }
-  }, [step, setup.transcriptionMode, whisperOk])
+  }, [step, setup.transcriptionMode, setup.whisperModel, whisperOk])
 
   const handleDownloadModel = (): void => {
     setDownloading(true)
-    window.electronAPI.downloadWhisperModel('large-v3').then((ok) => {
+    window.electronAPI.downloadWhisperModel(setup.whisperModel).then((ok) => {
       setDownloading(false)
       setDownloadDone(ok)
       if (ok) setModelCached(true)
-    }).catch(() => {
-      setDownloading(false)
-    })
+    }).catch(() => setDownloading(false))
   }
 
   const canProceedTranscription = (() => {
     if (setup.transcriptionMode === 'api') return setup.whisperApiKey.length > 0
     if (setup.transcriptionMode === 'remote') return setup.remoteHost.length > 0 && setup.remoteUser.length > 0
-    // Local mode requires Python + faster-whisper + model downloaded
     if (setup.transcriptionMode === 'local') {
       return pythonOk === true && whisperOk === true && (modelCached === true || downloadDone)
     }
     return true
   })()
 
-  const canProceedSummary = setup.summaryMode !== 'api' || setup.anthropicApiKey.length > 0
+  const canProceedSummary = (() => {
+    if (setup.summaryMode === 'api') return setup.anthropicApiKey.length > 0
+    if (setup.summaryMode === 'cli') return claudeCliOk === true
+    return true
+  })()
 
   const handleFinish = (): void => {
     window.electronAPI.setConfig({
       transcription: {
         mode: setup.transcriptionMode,
+        model: setup.whisperModel,
+        language: setup.language,
         api: { apiKey: setup.whisperApiKey, model: 'whisper-1' },
         remote: {
           host: setup.remoteHost,
@@ -146,7 +177,11 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
       },
       summary: {
         mode: setup.summaryMode,
+        language: setup.language,
         api: { apiKey: setup.anthropicApiKey }
+      },
+      output: {
+        directory: setup.outputDirectory
       },
       onboarded: true
     }).then(onComplete).catch(console.error)
@@ -163,7 +198,7 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
           <ProgressDots current={step} />
         </div>
 
-        {/* Step: Welcome */}
+        {/* ========== Step: Welcome ========== */}
         {step === 'welcome' && (
           <div className="space-y-5">
             <div className="space-y-2">
@@ -230,19 +265,34 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
           </div>
         )}
 
-        {/* Step: Transcription */}
+        {/* ========== Step: Transcription ========== */}
         {step === 'transcription' && (
           <div className="space-y-5">
             <div className="space-y-1">
-              <div className="text-white/30 text-[10px] uppercase tracking-wider">Step 1 of 2</div>
+              <div className="text-white/30 text-[10px] uppercase tracking-wider">Step 1 of 3</div>
               <div className="text-xl font-bold text-white/95">Transcription</div>
               <p className="text-white/40 text-sm">How should speech be converted to text?</p>
             </div>
 
+            {/* Language */}
+            <div className="space-y-1.5">
+              <label className="text-white/50 text-xs">Language</label>
+              <select
+                value={setup.language}
+                onChange={(e) => setSetup(s => ({ ...s, language: e.target.value }))}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/90 text-sm outline-none focus:border-white/25"
+              >
+                {LANG_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Mode selection */}
             <div className="space-y-2">
               {([
                 ['local', 'Local (faster-whisper)', 'Free, runs on your machine.'],
-                ['api', 'OpenAI Whisper API', 'Cloud-based, fast. Requires OpenAI API key.'],
+                ['api', 'OpenAI Whisper API', 'Cloud-based, fast. Requires API key.'],
                 ['remote', 'Remote (SSH)', 'Run on a GPU server via SSH.']
               ] as const).map(([value, label, desc]) => (
                 <label
@@ -268,49 +318,76 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                     </div>
                   </div>
 
-                  {/* Local mode: dependency checks + model download */}
+                  {/* Local: deps + model */}
                   {value === 'local' && setup.transcriptionMode === 'local' && (
                     <div className="mt-3 space-y-1.5">
                       <DepsCheck label="Python" ok={pythonOk} installCmd={isMac ? 'brew install python3' : 'winget install Python.Python.3.11'} />
                       <DepsCheck label="faster-whisper" ok={whisperOk} installCmd="pip install faster-whisper" />
-                      {pythonOk && whisperOk && modelCached !== null && (
-                        <div className={`rounded-lg px-3 py-2 text-xs ${
-                          modelCached || downloadDone
-                            ? 'bg-green-500/10 text-green-400'
-                            : downloading
-                              ? 'bg-blue-500/10 text-blue-400'
-                              : 'bg-yellow-500/10 text-yellow-400'
-                        }`}>
-                          {(modelCached || downloadDone) && (
-                            <span className="flex items-center gap-1.5">
-                              <span>&#10003;</span> Model large-v3 ready
-                            </span>
-                          )}
-                          {!modelCached && !downloadDone && downloading && (
-                            <div className="space-y-1">
-                              <span className="flex items-center gap-1.5">
-                                <span className="animate-spin">&#9696;</span> Downloading large-v3 ({modelSize})...
-                              </span>
-                              <span className="text-blue-400/60">This may take a few minutes.</span>
+
+                      {/* Model size selector */}
+                      {pythonOk && whisperOk && (
+                        <>
+                          <div className="space-y-1">
+                            <label className="text-white/40 text-[10px] uppercase">Model</label>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {MODEL_OPTIONS.map(m => (
+                                <button
+                                  key={m.value}
+                                  onClick={() => setSetup(s => ({ ...s, whisperModel: m.value }))}
+                                  className={`rounded-lg px-2.5 py-1.5 text-left transition-all ${
+                                    setup.whisperModel === m.value
+                                      ? 'bg-blue-500/15 border border-blue-500/30'
+                                      : 'bg-white/[0.03] border border-transparent hover:bg-white/[0.06]'
+                                  }`}
+                                >
+                                  <div className="text-white/80 text-xs font-medium">{m.label}</div>
+                                  <div className="text-white/30 text-[10px]">{m.size} · {m.desc}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Model download status */}
+                          {modelCached !== null && (
+                            <div className={`rounded-lg px-3 py-2 text-xs ${
+                              modelCached || downloadDone
+                                ? 'bg-green-500/10 text-green-400'
+                                : downloading
+                                  ? 'bg-blue-500/10 text-blue-400'
+                                  : 'bg-yellow-500/10 text-yellow-400'
+                            }`}>
+                              {(modelCached || downloadDone) && (
+                                <span className="flex items-center gap-1.5">
+                                  <span>&#10003;</span> Model {setup.whisperModel} ready
+                                </span>
+                              )}
+                              {!modelCached && !downloadDone && downloading && (
+                                <div className="space-y-1">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="animate-spin">&#9696;</span> Downloading {setup.whisperModel} ({modelSize})...
+                                  </span>
+                                  <span className="text-blue-400/60">This may take a few minutes.</span>
+                                </div>
+                              )}
+                              {!modelCached && !downloadDone && !downloading && (
+                                <div className="space-y-2">
+                                  <span>Model {setup.whisperModel} ({modelSize}) not downloaded.</span>
+                                  <button
+                                    onClick={handleDownloadModel}
+                                    className="block w-full py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-xs transition-colors"
+                                  >
+                                    Download now
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
-                          {!modelCached && !downloadDone && !downloading && (
-                            <div className="space-y-2">
-                              <span>Model large-v3 ({modelSize}) not downloaded yet.</span>
-                              <button
-                                onClick={handleDownloadModel}
-                                className="block w-full py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 text-xs transition-colors"
-                              >
-                                Download now
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        </>
                       )}
                     </div>
                   )}
 
-                  {/* API key input */}
+                  {/* API: key input */}
                   {value === 'api' && setup.transcriptionMode === 'api' && (
                     <input
                       type="password"
@@ -321,35 +398,17 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                     />
                   )}
 
-                  {/* Remote SSH inputs */}
+                  {/* Remote: SSH inputs */}
                   {value === 'remote' && setup.transcriptionMode === 'remote' && (
                     <div className="mt-3 space-y-2">
-                      <input
-                        type="text"
-                        value={setup.remoteHost}
+                      <input type="text" value={setup.remoteHost}
                         onChange={(e) => setSetup(s => ({ ...s, remoteHost: e.target.value }))}
                         placeholder="Host (e.g. gpu-server.local)"
                         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
                       />
-                      <input
-                        type="text"
-                        value={setup.remoteUser}
+                      <input type="text" value={setup.remoteUser}
                         onChange={(e) => setSetup(s => ({ ...s, remoteUser: e.target.value }))}
                         placeholder="Username"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
-                      />
-                      <input
-                        type="text"
-                        value={setup.remotePythonPath}
-                        onChange={(e) => setSetup(s => ({ ...s, remotePythonPath: e.target.value }))}
-                        placeholder="Python path (default: python3)"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
-                      />
-                      <input
-                        type="text"
-                        value={setup.remoteScriptPath}
-                        onChange={(e) => setSetup(s => ({ ...s, remoteScriptPath: e.target.value }))}
-                        placeholder="Script path (default: ~/transcribe.py)"
                         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
                       />
                     </div>
@@ -359,28 +418,23 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep('welcome')}
-                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 text-sm transition-colors"
-              >
+              <button onClick={() => setStep('welcome')}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 text-sm transition-colors">
                 Back
               </button>
-              <button
-                onClick={() => setStep('summary')}
-                disabled={!canProceedTranscription}
-                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/90 text-sm font-medium transition-colors disabled:opacity-30"
-              >
+              <button onClick={() => setStep('summary')} disabled={!canProceedTranscription}
+                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/90 text-sm font-medium transition-colors disabled:opacity-30">
                 Next
               </button>
             </div>
           </div>
         )}
 
-        {/* Step: Summary */}
+        {/* ========== Step: Summary ========== */}
         {step === 'summary' && (
           <div className="space-y-5">
             <div className="space-y-1">
-              <div className="text-white/30 text-[10px] uppercase tracking-wider">Step 2 of 2</div>
+              <div className="text-white/30 text-[10px] uppercase tracking-wider">Step 2 of 3</div>
               <div className="text-xl font-bold text-white/95">Summary</div>
               <p className="text-white/40 text-sm">How should meeting notes be generated?</p>
             </div>
@@ -412,6 +466,15 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                       <div className="text-white/35 text-xs">{desc}</div>
                     </div>
                   </div>
+
+                  {/* CLI: check installation */}
+                  {value === 'cli' && setup.summaryMode === 'cli' && (
+                    <div className="mt-3">
+                      <DepsCheck label="Claude CLI" ok={claudeCliOk} installCmd="npm install -g @anthropic-ai/claude-code" />
+                    </div>
+                  )}
+
+                  {/* API: key input */}
                   {value === 'api' && setup.summaryMode === 'api' && (
                     <input
                       type="password"
@@ -426,24 +489,64 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep('transcription')}
-                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 text-sm transition-colors"
-              >
+              <button onClick={() => setStep('transcription')}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 text-sm transition-colors">
                 Back
               </button>
-              <button
-                onClick={() => setStep('done')}
-                disabled={!canProceedSummary}
-                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/90 text-sm font-medium transition-colors disabled:opacity-30"
-              >
+              <button onClick={() => setStep('output')} disabled={!canProceedSummary}
+                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/90 text-sm font-medium transition-colors disabled:opacity-30">
                 Next
               </button>
             </div>
           </div>
         )}
 
-        {/* Step: Done */}
+        {/* ========== Step: Output ========== */}
+        {step === 'output' && (
+          <div className="space-y-5">
+            <div className="space-y-1">
+              <div className="text-white/30 text-[10px] uppercase tracking-wider">Step 3 of 3</div>
+              <div className="text-xl font-bold text-white/95">Output</div>
+              <p className="text-white/40 text-sm">Where should meeting notes be saved?</p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-white/50 text-xs">Save directory</label>
+                <input
+                  type="text"
+                  value={setup.outputDirectory}
+                  onChange={(e) => setSetup(s => ({ ...s, outputDirectory: e.target.value }))}
+                  placeholder="./meetings"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/90 text-sm outline-none focus:border-white/25 placeholder:text-white/20"
+                />
+                <p className="text-white/30 text-xs">
+                  Relative paths are resolved from your home directory. Files are saved as <code className="text-white/50">YYYY-MM-DD_HHmm.md</code>.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-4 py-3 space-y-1.5">
+                <div className="text-white/50 text-[10px] uppercase tracking-wider">Optional integrations</div>
+                <p className="text-white/35 text-xs leading-relaxed">
+                  Notion, Slack, and Remote SCP can be configured later from the Settings panel (gear icon).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setStep('summary')}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 text-sm transition-colors">
+                Back
+              </button>
+              <button onClick={() => setStep('done')}
+                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/90 text-sm font-medium transition-colors">
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========== Step: Done ========== */}
         {step === 'done' && (
           <div className="space-y-5">
             <div className="space-y-2">
@@ -471,9 +574,16 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
               ))}
             </div>
 
-            <p className="text-white/25 text-xs">
-              Notion / Slack / Remote can be configured later via the gear icon.
-            </p>
+            {/* Summary of config */}
+            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-4 py-3 space-y-1">
+              <div className="text-white/50 text-[10px] uppercase tracking-wider">Your setup</div>
+              <div className="text-white/60 text-xs space-y-0.5">
+                <div>Transcription: <span className="text-white/80">{setup.transcriptionMode}{setup.transcriptionMode === 'local' ? ` (${setup.whisperModel})` : ''}</span></div>
+                <div>Language: <span className="text-white/80">{LANG_OPTIONS.find(l => l.value === setup.language)?.label || setup.language}</span></div>
+                <div>Summary: <span className="text-white/80">{setup.summaryMode === 'cli' ? 'Claude CLI' : 'Anthropic API'}</span></div>
+                <div>Output: <span className="text-white/80">{setup.outputDirectory}</span></div>
+              </div>
+            </div>
 
             <button
               onClick={handleFinish}

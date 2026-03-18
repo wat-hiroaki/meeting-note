@@ -105,6 +105,15 @@ export function registerIpcHandlers(): void {
     return false
   })
 
+  ipcMain.handle('system:checkClaudeCli', () => {
+    try {
+      execSync('claude --version', { timeout: 5000, stdio: 'pipe', windowsHide: true, shell: true })
+      return true
+    } catch {
+      return false
+    }
+  })
+
   ipcMain.handle('system:checkPython', () => {
     try {
       execSync('python --version', { timeout: 5000, stdio: 'pipe', windowsHide: true })
@@ -188,7 +197,7 @@ export function registerIpcHandlers(): void {
 
     switch (mode) {
       case 'onboarding':
-        win.setSize(420, 520)
+        win.setSize(440, 600)
         win.setResizable(false)
         win.center()
         break
