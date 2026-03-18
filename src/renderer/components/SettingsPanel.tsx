@@ -90,9 +90,23 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <Select
             value={config.transcription.mode}
             onChange={(v) => updateConfig({ transcription: { ...config.transcription, mode: v } })}
-            options={[{ value: 'local', label: 'Local' }, { value: 'remote', label: 'Remote (SSH)' }]}
+            options={[
+              { value: 'local', label: 'Local (faster-whisper)' },
+              { value: 'api', label: 'OpenAI Whisper API' },
+              { value: 'remote', label: 'Remote (SSH)' }
+            ]}
           />
         </SettingRow>
+        {config.transcription.mode === 'api' && (
+          <SettingRow label="OpenAI Key">
+            <Input
+              value={config.transcription.apiKey || ''}
+              onChange={(v) => updateConfig({ transcription: { ...config.transcription, apiKey: v } })}
+              type="password"
+              placeholder="sk-..."
+            />
+          </SettingRow>
+        )}
         <SettingRow label="Language">
           <Select
             value={config.transcription.language}
@@ -104,12 +118,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <Select
             value={config.transcription.model}
             onChange={(v) => updateConfig({ transcription: { ...config.transcription, model: v } })}
-            options={[
-              { value: 'large-v3', label: 'large-v3' },
-              { value: 'medium', label: 'medium' },
-              { value: 'small', label: 'small' },
-              { value: 'base', label: 'base' }
-            ]}
+            options={config.transcription.mode === 'api'
+              ? [{ value: 'whisper-1', label: 'whisper-1' }]
+              : [
+                  { value: 'large-v3', label: 'large-v3' },
+                  { value: 'medium', label: 'medium' },
+                  { value: 'small', label: 'small' },
+                  { value: 'base', label: 'base' }
+                ]
+            }
           />
         </SettingRow>
       </div>
@@ -121,9 +138,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           <Select
             value={config.summary.mode}
             onChange={(v) => updateConfig({ summary: { ...config.summary, mode: v } })}
-            options={[{ value: 'cli', label: 'Claude CLI' }, { value: 'api', label: 'API' }]}
+            options={[{ value: 'cli', label: 'Claude CLI (Free)' }, { value: 'api', label: 'Anthropic API (BYOK)' }]}
           />
         </SettingRow>
+        {config.summary.mode === 'api' && (
+          <SettingRow label="Anthropic Key">
+            <Input
+              value={config.summary.apiKey || ''}
+              onChange={(v) => updateConfig({ summary: { ...config.summary, apiKey: v } })}
+              type="password"
+              placeholder="sk-ant-..."
+            />
+          </SettingRow>
+        )}
       </div>
 
       {/* Output */}

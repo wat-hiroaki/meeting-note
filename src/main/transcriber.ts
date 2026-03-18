@@ -1,6 +1,7 @@
 import { spawn, execSync } from 'child_process'
 import { join } from 'path'
-import { existsSync, copyFileSync, unlinkSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
+import { createReadStream } from 'fs'
 import { getConfig } from './config'
 
 export interface TranscriptSegment {
@@ -18,10 +19,14 @@ export interface TranscriptResult {
 export async function transcribe(audioPath: string): Promise<TranscriptResult> {
   const config = getConfig()
 
-  if (config.transcription.mode === 'remote') {
-    return transcribeRemote(audioPath)
+  switch (config.transcription.mode) {
+    case 'api':
+      return transcribeAPI(audioPath)
+    case 'remote':
+      return transcribeRemote(audioPath)
+    default:
+      return transcribeLocal(audioPath)
   }
-  return transcribeLocal(audioPath)
 }
 
 async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
@@ -109,4 +114,57 @@ async function transcribeRemote(audioPath: string): Promise<TranscriptResult> {
   }
 
   return result as TranscriptResult
+}
+
+async function transcribeAPI(audioPath: string): Promise<TranscriptResult> {
+  const config = getConfig()
+  const { apiKey, model } = config.transcription.api
+
+  if (!apiKey) {
+    throw new Error('OpenAI API key is required for API transcription mode. Set transcription.api.apiKey in config.')
+  }
+
+  const fs = await import('fs')
+  const formData = new FormData()
+
+  const fileBuffer = fs.readFileSync(audioPath)
+  const blob = new Blob([fileBuffer], { type: 'audio/wav' })
+  formData.append('file', blob, 'recording.wav')
+  formData.append('model', model)
+  formData.append('response_format', 'verbose_json')
+  formData.append('timestamp_granularities[]', 'segment')
+
+  if (config.transcription.language !== 'auto') {
+    formData.append('language', config.transcription.language)
+  }
+
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: formData
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`OpenAI Whisper API error (${response.status}): ${error}`)
+  }
+
+  const data = await response.json() as {
+    language: string
+    duration: number
+    segments?: Array<{ start: number; end: number; text: string }>
+    text: string
+  }
+
+  return {
+    language: data.language || config.transcription.language,
+    duration: data.duration || 0,
+    segments: data.segments?.map(s => ({
+      start: Math.round(s.start * 100) / 100,
+      end: Math.round(s.end * 100) / 100,
+      text: s.text.trim()
+    })) || [{ start: 0, end: data.duration || 0, text: data.text }]
+  }
 }

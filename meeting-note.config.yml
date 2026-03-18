@@ -7,9 +7,13 @@ recording:
   sampleRate: 16000
 
 transcription:
-  mode: "local"           # local | remote
+  mode: "local"           # local | api | remote
   model: "large-v3"
   language: "ja"
+  # API settings (when mode: api) — OpenAI Whisper API
+  api:
+    apiKey: ""            # OpenAI API key (BYOK)
+    model: "whisper-1"
   # Remote settings (when mode: remote)
   remote:
     host: ""
@@ -20,8 +24,9 @@ transcription:
 summary:
   mode: "cli"             # cli | api
   language: "ja"
-  # API settings (when mode: api)
+  # API settings (when mode: api) — Anthropic Claude API
   api:
+    apiKey: ""            # Anthropic API key (BYOK)
     model: "claude-sonnet-4-20250514"
     maxTokens: 4096
 

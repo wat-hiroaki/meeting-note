@@ -8,7 +8,7 @@ export const ConfigSchema = z.object({
   }).default({}),
 
   transcription: z.object({
-    mode: z.enum(['local', 'remote']).default('local'),
+    mode: z.enum(['local', 'remote', 'api']).default('local'),
     model: z.string().default('large-v3'),
     language: z.string().default('ja'),
     remote: z.object({
@@ -16,6 +16,10 @@ export const ConfigSchema = z.object({
       user: z.string().default(''),
       pythonPath: z.string().default('python3'),
       scriptPath: z.string().default('~/transcribe.py')
+    }).default({}),
+    api: z.object({
+      apiKey: z.string().default(''),
+      model: z.string().default('whisper-1')
     }).default({})
   }).default({}),
 
@@ -23,6 +27,7 @@ export const ConfigSchema = z.object({
     mode: z.enum(['cli', 'api']).default('cli'),
     language: z.string().default('ja'),
     api: z.object({
+      apiKey: z.string().default(''),
       model: z.string().default('claude-sonnet-4-20250514'),
       maxTokens: z.number().default(4096)
     }).default({})

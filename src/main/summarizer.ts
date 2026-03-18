@@ -70,9 +70,15 @@ async function summarizeCLI(prompt: string): Promise<string> {
 
 async function summarizeAPI(prompt: string): Promise<string> {
   const config = getConfig()
+  const { apiKey } = config.summary.api
+
+  if (!apiKey) {
+    throw new Error('Anthropic API key is required for API summary mode. Set summary.api.apiKey in config.')
+  }
+
   // Dynamic import to avoid requiring the SDK when using CLI mode
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic()
+  const client = new Anthropic({ apiKey })
 
   const message = await client.messages.create({
     model: config.summary.api.model,
