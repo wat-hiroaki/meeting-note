@@ -1,4 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import { startRecording, pauseRecording, resumeRecording, stopRecording, getAudioDevices } from './recorder'
+
+let currentAudioPath = ''
 
 export function registerIpcHandlers(): void {
   // Window controls
@@ -10,25 +13,39 @@ export function registerIpcHandlers(): void {
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
 
-  // Recording stubs — will be implemented in Task 6
+  // Recording
   ipcMain.handle('recording:start', () => {
-    console.log('[IPC] recording:start')
+    currentAudioPath = startRecording()
+    console.log('[IPC] Recording started:', currentAudioPath)
   })
 
   ipcMain.handle('recording:pause', () => {
-    console.log('[IPC] recording:pause')
+    pauseRecording()
+    console.log('[IPC] Recording paused')
   })
 
   ipcMain.handle('recording:resume', () => {
-    console.log('[IPC] recording:resume')
+    resumeRecording()
+    console.log('[IPC] Recording resumed')
   })
 
-  ipcMain.handle('recording:stop', () => {
-    console.log('[IPC] recording:stop')
+  ipcMain.handle('recording:stop', async (event) => {
+    const audioPath = await stopRecording()
+    currentAudioPath = audioPath
+    console.log('[IPC] Recording stopped:', audioPath)
+
+    // Notify renderer that recording has stopped
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      // TODO: Task 16 will wire up the full pipeline here
+      win.webContents.send('recording:status', 'done')
+    }
+
+    return audioPath
   })
 
   ipcMain.handle('recording:devices', () => {
-    return []
+    return getAudioDevices()
   })
 
   // Config stubs — will be implemented in Task 8
@@ -39,4 +56,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('config:set', (_event, _config: unknown) => {
     console.log('[IPC] config:set')
   })
+}
+
+export function getCurrentAudioPath(): string {
+  return currentAudioPath
 }

@@ -1,0 +1,217 @@
+import { spawn, execSync } from 'child_process'
+import type { ChildProcess } from 'child_process'
+import { join } from 'path'
+import { app } from 'electron'
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync } from 'fs'
+
+interface RecorderState {
+  process: ChildProcess | null
+  segments: string[]
+  currentSegment: number
+  outputDir: string
+  isPaused: boolean
+  device: string
+}
+
+const state: RecorderState = {
+  process: null,
+  segments: [],
+  currentSegment: 0,
+  outputDir: '',
+  isPaused: false,
+  device: ''
+}
+
+function getTempDir(): string {
+  const dir = join(app.getPath('temp'), 'meeting-note')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+export function getAudioDevices(): string[] {
+  try {
+    const result = execSync('ffmpeg -list_devices true -f dshow -i dummy 2>&1', {
+      encoding: 'utf-8',
+      timeout: 5000
+    })
+    // ffmpeg outputs to stderr, but execSync with 2>&1 captures it
+    return parseDeviceList(result)
+  } catch (err: unknown) {
+    // ffmpeg always exits with error when listing devices
+    const output = (err as { stdout?: string; stderr?: string }).stderr || (err as { stdout?: string }).stdout || ''
+    return parseDeviceList(output)
+  }
+}
+
+function parseDeviceList(output: string): string[] {
+  const devices: string[] = []
+  const lines = output.split('\n')
+  let isAudio = false
+
+  for (const line of lines) {
+    if (line.includes('DirectShow audio devices')) {
+      isAudio = true
+      continue
+    }
+    if (isAudio && line.includes('"')) {
+      const match = line.match(/"([^"]+)"/)
+      if (match && !match[1].includes('Alternative name')) {
+        devices.push(match[1])
+      }
+    }
+  }
+
+  return devices
+}
+
+export function startRecording(device?: string): string {
+  const tempDir = getTempDir()
+  state.outputDir = tempDir
+  state.segments = []
+  state.currentSegment = 0
+  state.isPaused = false
+  state.device = device || 'default'
+
+  return startSegment()
+}
+
+function startSegment(): string {
+  const segmentPath = join(state.outputDir, `segment_${state.currentSegment}.wav`)
+  state.segments.push(segmentPath)
+
+  // Use WASAPI loopback for system audio capture on Windows
+  const args = [
+    '-f', 'dshow',
+    '-i', `audio=${state.device === 'default' ? getDefaultDevice() : state.device}`,
+    '-ac', '1',           // mono
+    '-ar', '16000',       // 16kHz for Whisper
+    '-acodec', 'pcm_s16le',
+    '-y',                 // overwrite
+    segmentPath
+  ]
+
+  state.process = spawn('ffmpeg', args)
+
+  state.process.stderr?.on('data', (data: Buffer) => {
+    // FFmpeg outputs progress to stderr
+    const msg = data.toString()
+    if (msg.includes('Error') || msg.includes('error')) {
+      console.error('[Recorder] FFmpeg error:', msg)
+    }
+  })
+
+  state.process.on('close', (code) => {
+    console.log(`[Recorder] FFmpeg segment ${state.currentSegment} exited with code ${code}`)
+  })
+
+  return segmentPath
+}
+
+function getDefaultDevice(): string {
+  const devices = getAudioDevices()
+  // Prefer stereo mix or virtual cable for system audio
+  const preferred = devices.find(d =>
+    d.toLowerCase().includes('stereo mix') ||
+    d.toLowerCase().includes('virtual cable') ||
+    d.toLowerCase().includes('wasapi')
+  )
+  return preferred || devices[0] || 'Microphone'
+}
+
+export function pauseRecording(): void {
+  if (!state.process || state.isPaused) return
+  state.isPaused = true
+
+  // On Windows we can't SIGSTOP, so we kill the current segment and start a new one on resume
+  state.process.stdin?.write('q')
+  setTimeout(() => {
+    if (state.process && !state.process.killed) {
+      state.process.kill('SIGTERM')
+    }
+    state.process = null
+  }, 500)
+}
+
+export function resumeRecording(): void {
+  if (!state.isPaused) return
+  state.isPaused = false
+  state.currentSegment++
+  startSegment()
+}
+
+export async function stopRecording(): Promise<string> {
+  if (state.process) {
+    state.process.stdin?.write('q')
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => {
+        if (state.process && !state.process.killed) {
+          state.process.kill('SIGTERM')
+        }
+        resolve()
+      }, 2000)
+
+      state.process?.on('close', () => {
+        clearTimeout(timeout)
+        resolve()
+      })
+    })
+    state.process = null
+  }
+
+  // If multiple segments, concatenate them
+  if (state.segments.length > 1) {
+    return await concatSegments()
+  }
+
+  return state.segments[0] || ''
+}
+
+async function concatSegments(): Promise<string> {
+  const outputPath = join(state.outputDir, 'recording.wav')
+  const listPath = join(state.outputDir, 'segments.txt')
+
+  // Create concat list file
+  const listContent = state.segments
+    .filter(s => existsSync(s))
+    .map(s => `file '${s.replace(/\\/g, '/')}'`)
+    .join('\n')
+  writeFileSync(listPath, listContent)
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn('ffmpeg', [
+      '-f', 'concat',
+      '-safe', '0',
+      '-i', listPath,
+      '-c', 'copy',
+      '-y',
+      outputPath
+    ])
+
+    proc.on('close', (code) => {
+      // Cleanup segment files
+      state.segments.forEach(s => {
+        try { unlinkSync(s) } catch { /* ignore */ }
+      })
+      try { unlinkSync(listPath) } catch { /* ignore */ }
+
+      if (code === 0) {
+        resolve(outputPath)
+      } else {
+        // If concat fails, return the first segment
+        resolve(state.segments[0] || '')
+      }
+    })
+
+    proc.on('error', (err) => {
+      reject(err)
+    })
+  })
+}
+
+export function isRecording(): boolean {
+  return state.process !== null && !state.isPaused
+}
+
+export function isPaused(): boolean {
+  return state.isPaused
+}
