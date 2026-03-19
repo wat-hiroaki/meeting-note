@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface ConfigData {
   recording: { micDevice: string }
@@ -46,26 +46,40 @@ const defaultConfig: ConfigData = {
 
 export function useConfig(): {
   config: ConfigData
-  updateConfig: (updates: Partial<ConfigData>) => void
+  editConfig: (updates: Partial<ConfigData>) => void
+  saveConfig: () => Promise<void>
+  dirty: boolean
   loading: boolean
 } {
   const [config, setConfig] = useState<ConfigData>(defaultConfig)
   const [loading, setLoading] = useState(true)
+  const [dirty, setDirty] = useState(false)
+  const savedRef = useRef<ConfigData>(defaultConfig)
 
   useEffect(() => {
     window.electronAPI.getConfig().then((data) => {
       if (data && typeof data === 'object') {
-        setConfig({ ...defaultConfig, ...(data as Partial<ConfigData>) })
+        const loaded = { ...defaultConfig, ...(data as Partial<ConfigData>) }
+        setConfig(loaded)
+        savedRef.current = loaded
       }
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
 
-  const updateConfig = useCallback((updates: Partial<ConfigData>): void => {
-    const newConfig = { ...config, ...updates }
-    setConfig(newConfig)
-    window.electronAPI.setConfig(newConfig).catch(console.error)
+  const editConfig = useCallback((updates: Partial<ConfigData>): void => {
+    setConfig(prev => {
+      const newConfig = { ...prev, ...updates }
+      setDirty(true)
+      return newConfig
+    })
+  }, [])
+
+  const saveConfig = useCallback(async (): Promise<void> => {
+    await window.electronAPI.setConfig(config)
+    savedRef.current = config
+    setDirty(false)
   }, [config])
 
-  return { config, updateConfig, loading }
+  return { config, editConfig, saveConfig, dirty, loading }
 }

@@ -78,14 +78,19 @@ const isMac = typeof window !== 'undefined' && window.electronAPI?.platform === 
 const mod = isMac ? 'Cmd' : 'Ctrl'
 
 export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Element {
-  const { config, updateConfig, loading } = useConfig()
+  const { config, editConfig, saveConfig, dirty, loading } = useConfig()
   const [saved, setSaved] = useState(false)
 
-  const handleUpdate = useCallback((updates: Parameters<typeof updateConfig>[0]): void => {
-    updateConfig(updates)
+  const handleUpdate = useCallback((updates: Parameters<typeof editConfig>[0]): void => {
+    editConfig(updates)
+    setSaved(false)
+  }, [editConfig])
+
+  const handleSave = useCallback(async (): Promise<void> => {
+    await saveConfig()
     setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
-  }, [updateConfig])
+    setTimeout(() => setSaved(false), 2000)
+  }, [saveConfig])
 
   if (loading) {
     return (
@@ -99,22 +104,33 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     <div className="rounded-2xl p-4 mt-1 space-y-3 max-h-[500px] overflow-y-auto no-drag solid-panel">
       {/* Header */}
       <div className="flex items-center justify-between">
+        <span className="text-white/90 text-sm font-medium">Settings</span>
         <div className="flex items-center gap-2">
-          <span className="text-white/90 text-sm font-medium">Settings</span>
           {saved && (
-            <span className="text-green-400 text-[10px] animate-pulse">Saved</span>
+            <span className="text-green-400 text-[10px]">Saved!</span>
           )}
+          <button
+            onClick={handleSave}
+            disabled={!dirty}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+              dirty
+                ? 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/20'
+                : 'bg-white/5 text-white/30 cursor-not-allowed'
+            }`}
+          >
+            Save
+          </button>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+            title="Close settings"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <line x1="2" y1="2" x2="10" y2="10" />
+              <line x1="10" y1="2" x2="2" y2="10" />
+            </svg>
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
-          title="Close settings"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <line x1="2" y1="2" x2="10" y2="10" />
-            <line x1="10" y1="2" x2="2" y2="10" />
-          </svg>
-        </button>
       </div>
 
       {/* Recording */}
