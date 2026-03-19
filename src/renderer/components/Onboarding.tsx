@@ -474,11 +474,54 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
             </div>
 
             <div className="space-y-2">
+              {/* Claude Code CLI — featured option */}
+              <label
+                className={`block rounded-xl px-4 py-3 cursor-pointer transition-all ${
+                  setup.summaryMode === 'cli'
+                    ? 'bg-white/10 border border-blue-500/30'
+                    : 'bg-white/[0.03] border border-transparent hover:bg-white/[0.06]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <input type="radio" name="summary" value="cli"
+                    checked={setup.summaryMode === 'cli'}
+                    onChange={() => setSetup(s => ({ ...s, summaryMode: 'cli' }))}
+                    className="accent-blue-400" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white/85 text-sm">Claude Code CLI</span>
+                      <span className="px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 text-[10px] font-medium">FREE</span>
+                    </div>
+                    <div className="text-white/35 text-xs">No API key needed. Uses your existing Claude Code subscription.</div>
+                  </div>
+                </div>
+
+                {setup.summaryMode === 'cli' && (
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg bg-white/[0.03] px-3 py-2.5 text-xs text-white/50 leading-relaxed space-y-1.5">
+                      <div className="text-white/70 font-medium">What is Claude Code CLI?</div>
+                      <div>Claude Code is Anthropic's AI coding assistant that runs in your terminal. If you have a Claude Code subscription ($20/mo Max or $100/mo Pro), meeting-note can use it to generate summaries at no extra cost.</div>
+                      <div className="text-white/40 mt-1">No API key or credit card needed — it uses your existing login.</div>
+                    </div>
+                    <DepsCheck label="Claude Code CLI" ok={claudeCliOk} installCmd="npm install -g @anthropic-ai/claude-code" />
+                    {claudeCliOk === false && (
+                      <div className="rounded-lg bg-white/[0.03] px-3 py-2 text-[10px] text-white/40 leading-relaxed space-y-1">
+                        <div className="font-medium text-white/50">How to set up:</div>
+                        <div>1. Install Node.js from nodejs.org</div>
+                        <div>2. Run: <code className="text-white/60">npm install -g @anthropic-ai/claude-code</code></div>
+                        <div>3. Run: <code className="text-white/60">claude</code> and sign in with your Anthropic account</div>
+                        <div>4. Come back here and click Next</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </label>
+
+              {/* Other API options */}
               {([
-                ['cli', 'Claude Code CLI', 'Free with Claude Code subscription.'],
-                ['anthropic', 'Anthropic API', 'Direct API access. Requires Anthropic API key.'],
-                ['openai', 'OpenAI API (Beta)', 'GPT-4o and others. Requires OpenAI API key.'],
-                ['gemini', 'Google Gemini API (Beta)', 'Gemini 2.5 Flash and others. Requires Google API key.']
+                ['anthropic', 'Anthropic API', 'Pay-per-use. Direct API access with your own key.'],
+                ['openai', 'OpenAI API (Beta)', 'GPT-4o. Pay-per-use with OpenAI key.'],
+                ['gemini', 'Google Gemini API (Beta)', 'Gemini 2.5 Flash. Pay-per-use with Google key.']
               ] as const).map(([value, label, desc]) => (
                 <label
                   key={value}
@@ -489,58 +532,38 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <input
-                      type="radio"
-                      name="summary"
-                      value={value}
+                    <input type="radio" name="summary" value={value}
                       checked={setup.summaryMode === value}
                       onChange={() => setSetup(s => ({ ...s, summaryMode: value }))}
-                      className="accent-blue-400"
-                    />
+                      className="accent-blue-400" />
                     <div>
                       <div className="text-white/85 text-sm">{label}</div>
                       <div className="text-white/35 text-xs">{desc}</div>
                     </div>
                   </div>
 
-                  {/* CLI: check installation */}
-                  {value === 'cli' && setup.summaryMode === 'cli' && (
-                    <div className="mt-3">
-                      <DepsCheck label="Claude Code CLI" ok={claudeCliOk} installCmd="npm install -g @anthropic-ai/claude-code" />
-                    </div>
-                  )}
-
                   {/* Anthropic API: key input */}
                   {value === 'anthropic' && setup.summaryMode === 'anthropic' && (
-                    <input
-                      type="password"
-                      value={setup.anthropicApiKey}
+                    <input type="password" value={setup.anthropicApiKey}
                       onChange={(e) => setSetup(s => ({ ...s, anthropicApiKey: e.target.value }))}
                       placeholder="sk-ant-..."
-                      className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
-                    />
+                      className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20" />
                   )}
 
                   {/* OpenAI API: key input */}
                   {value === 'openai' && setup.summaryMode === 'openai' && (
-                    <input
-                      type="password"
-                      value={setup.openaiApiKey}
+                    <input type="password" value={setup.openaiApiKey}
                       onChange={(e) => setSetup(s => ({ ...s, openaiApiKey: e.target.value }))}
                       placeholder="sk-..."
-                      className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
-                    />
+                      className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20" />
                   )}
 
                   {/* Gemini API: key input */}
                   {value === 'gemini' && setup.summaryMode === 'gemini' && (
-                    <input
-                      type="password"
-                      value={setup.geminiApiKey}
+                    <input type="password" value={setup.geminiApiKey}
                       onChange={(e) => setSetup(s => ({ ...s, geminiApiKey: e.target.value }))}
                       placeholder="AIza..."
-                      className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20"
-                    />
+                      className="mt-3 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 placeholder:text-white/20" />
                   )}
                 </label>
               ))}

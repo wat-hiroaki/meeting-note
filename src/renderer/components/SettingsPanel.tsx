@@ -241,6 +241,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             ]}
           />
         </SettingRow>
+        {config.summary.mode === 'cli' && (
+          <div className="rounded-lg px-3 py-2 bg-blue-500/5 text-white/50 text-[10px] leading-relaxed">
+            Uses your Claude Code subscription (Max $20/mo or Pro $100/mo) — no API key needed. Run <code className="text-white/70">claude</code> in terminal to sign in.
+          </div>
+        )}
         {config.summary.mode === 'anthropic' && (
           <SettingRow label="Anthropic Key">
             <Input
