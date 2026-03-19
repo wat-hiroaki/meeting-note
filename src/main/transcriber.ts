@@ -82,10 +82,24 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
     })
 
     proc.on('close', (code) => {
-      // The Python script outputs JSON errors to stdout, so check stdout first
-      if (stdout.trim()) {
+      console.log('[Transcriber] Process exited with code:', code)
+      console.log('[Transcriber] stdout length:', stdout.length, 'stderr length:', stderr.length)
+
+      // The Python script outputs JSON to stdout. Sometimes warnings appear
+      // before the JSON on separate lines, so try parsing the last line first.
+      const stdoutTrimmed = stdout.trim()
+      let jsonStr = stdoutTrimmed
+
+      // Try to find the JSON line (starts with '{')
+      if (stdoutTrimmed && !stdoutTrimmed.startsWith('{')) {
+        const lines = stdoutTrimmed.split('\n')
+        const jsonLine = lines.findLast(l => l.trim().startsWith('{'))
+        if (jsonLine) jsonStr = jsonLine.trim()
+      }
+
+      if (jsonStr) {
         try {
-          const result = JSON.parse(stdout) as TranscriptResult | { error: string }
+          const result = JSON.parse(jsonStr) as TranscriptResult | { error: string }
           if ('error' in result) {
             // Script returned a structured error (e.g. faster-whisper not installed)
             const msg = result.error
