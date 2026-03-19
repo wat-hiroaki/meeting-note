@@ -40,7 +40,16 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     mediaRecorderRef.current = null
   }, [])
 
+  const startingRef = useRef(false)
+
   const start = useCallback(async (micDeviceId?: string): Promise<void> => {
+    // Prevent concurrent start calls
+    if (mediaRecorderRef.current || startingRef.current) {
+      console.warn('[AudioRecorder] Recording already in progress, ignoring start()')
+      return
+    }
+    startingRef.current = true
+
     setError(null)
     chunksRef.current = []
 
@@ -128,7 +137,9 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       recorder.start(1000)
       setIsRecording(true)
       setIsPaused(false)
+      startingRef.current = false
     } catch (err) {
+      startingRef.current = false
       const message = err instanceof Error ? err.message : 'Failed to start audio capture'
       setError(message)
       cleanup()

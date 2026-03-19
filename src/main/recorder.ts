@@ -75,6 +75,8 @@ export async function convertWebmToWav(webmPath: string): Promise<string> {
   const wavPath = webmPath.replace(/\.webm$/, '.wav')
   const bin = getFfmpegPath()
 
+  const FFMPEG_TIMEOUT_MS = 120_000 // 2 minutes max for conversion
+
   return new Promise((resolve, reject) => {
     const proc = spawn(bin, [
       '-i', webmPath,
@@ -85,11 +87,25 @@ export async function convertWebmToWav(webmPath: string): Promise<string> {
     ], { windowsHide: true })
 
     let stderr = ''
+    let settled = false
+
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        proc.kill('SIGKILL')
+        console.error('[Recorder] FFmpeg timed out after', FFMPEG_TIMEOUT_MS, 'ms')
+        reject(new Error('FFmpeg conversion timed out. The recording may be corrupt.'))
+      }
+    }, FFMPEG_TIMEOUT_MS)
+
     proc.stderr?.on('data', (data: Buffer) => {
       stderr += data.toString()
     })
 
     proc.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
       if (code === 0 && existsSync(wavPath)) {
         console.log('[Recorder] Converted to WAV:', wavPath)
         resolve(wavPath)
@@ -100,6 +116,9 @@ export async function convertWebmToWav(webmPath: string): Promise<string> {
     })
 
     proc.on('error', (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
       console.error('[Recorder] FFmpeg spawn error:', err.message)
       reject(err)
     })

@@ -60,6 +60,8 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
     )
   }
 
+  const TRANSCRIBE_TIMEOUT_MS = 600_000 // 10 minutes max for transcription
+
   return new Promise((resolve, reject) => {
     const args = [
       scriptPath,
@@ -72,6 +74,15 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
     const proc = spawn('python', args, {
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
     })
+
+    let settled = false
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        proc.kill('SIGKILL')
+        reject(new Error('Transcription timed out after 10 minutes. The audio file may be too large or the model may be stuck.'))
+      }
+    }, TRANSCRIBE_TIMEOUT_MS)
 
     // Collect raw Buffer chunks to avoid splitting multi-byte UTF-8 characters
     const stdoutChunks: Buffer[] = []
@@ -86,6 +97,10 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
     })
 
     proc.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+
       const stdout = Buffer.concat(stdoutChunks).toString('utf-8')
       const stderr = Buffer.concat(stderrChunks).toString('utf-8')
 
@@ -144,6 +159,10 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
     })
 
     proc.on('error', (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+
       if (err.message.includes('ENOENT')) {
         reject(new Error(
           'Python is not installed or not in PATH. ' +

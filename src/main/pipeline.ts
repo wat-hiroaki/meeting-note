@@ -10,11 +10,21 @@ import type { MeetingData } from './publishers/markdown'
 
 type ProgressStep = 'transcribing' | 'summarizing' | 'saving' | 'publishing' | 'done'
 
+function isWindowAlive(win: BrowserWindow): boolean {
+  try {
+    return !win.isDestroyed() && win.webContents !== null && !win.webContents.isDestroyed()
+  } catch {
+    return false
+  }
+}
+
 function sendProgress(win: BrowserWindow, step: ProgressStep, percent: number): void {
+  if (!isWindowAlive(win)) return
   win.webContents.send('processing:progress', { step, percent })
 }
 
 function sendError(win: BrowserWindow, message: string): void {
+  if (!isWindowAlive(win)) return
   win.webContents.send('pipeline:error', message)
   win.webContents.send('recording:status', 'error')
 }
@@ -80,11 +90,13 @@ export async function runPipeline(audioPath: string, win: BrowserWindow, started
     }
 
     sendProgress(win, 'done', 100)
-    win.webContents.send('pipeline:output', mdPath)
-    win.webContents.send('recording:status', 'done')
+    if (isWindowAlive(win)) {
+      win.webContents.send('pipeline:output', mdPath)
+      win.webContents.send('recording:status', 'done')
+    }
 
     // Send partial errors as warnings (pipeline still succeeded)
-    if (errors.length > 0) {
+    if (errors.length > 0 && isWindowAlive(win)) {
       win.webContents.send('pipeline:error', `Publishing warnings: ${errors.join('; ')}`)
     }
   } catch (err) {

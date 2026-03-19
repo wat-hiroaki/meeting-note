@@ -40,10 +40,21 @@ export async function summarize(transcript: TranscriptResult): Promise<string> {
 }
 
 async function summarizeCLI(prompt: string): Promise<string> {
+  const SUMMARY_TIMEOUT_MS = 300_000 // 5 minutes max for summarization
+
   return new Promise((resolve, reject) => {
     const proc = spawn('claude', ['-p'], {
       shell: true
     })
+
+    let settled = false
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        proc.kill('SIGKILL')
+        reject(new Error('Claude Code CLI timed out after 5 minutes. Try switching to "anthropic" API mode in Settings.'))
+      }
+    }, SUMMARY_TIMEOUT_MS)
 
     // Collect raw Buffer chunks to avoid splitting multi-byte UTF-8 characters
     const stdoutChunks: Buffer[] = []
@@ -62,6 +73,10 @@ async function summarizeCLI(prompt: string): Promise<string> {
     proc.stdin.end()
 
     proc.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+
       const stdout = Buffer.concat(stdoutChunks).toString('utf-8')
       const stderr = Buffer.concat(stderrChunks).toString('utf-8')
 
@@ -74,6 +89,10 @@ async function summarizeCLI(prompt: string): Promise<string> {
     })
 
     proc.on('error', (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+
       if (err.message.includes('ENOENT')) {
         reject(new Error(
           'Claude Code CLI is not installed or not in PATH. ' +
