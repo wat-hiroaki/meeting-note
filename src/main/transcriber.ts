@@ -69,19 +69,26 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
       '--output', 'json'
     ]
 
-    const proc = spawn('python', args)
-    let stdout = ''
-    let stderr = ''
+    const proc = spawn('python', args, {
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    })
+
+    // Collect raw Buffer chunks to avoid splitting multi-byte UTF-8 characters
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
 
     proc.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString()
+      stdoutChunks.push(data)
     })
 
     proc.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString()
+      stderrChunks.push(data)
     })
 
     proc.on('close', (code) => {
+      const stdout = Buffer.concat(stdoutChunks).toString('utf-8')
+      const stderr = Buffer.concat(stderrChunks).toString('utf-8')
+
       console.log('[Transcriber] Process exited with code:', code)
       console.log('[Transcriber] stdout length:', stdout.length, 'stderr length:', stderr.length)
 

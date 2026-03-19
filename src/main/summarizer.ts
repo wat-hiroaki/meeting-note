@@ -45,15 +45,16 @@ async function summarizeCLI(prompt: string): Promise<string> {
       shell: true
     })
 
-    let stdout = ''
-    let stderr = ''
+    // Collect raw Buffer chunks to avoid splitting multi-byte UTF-8 characters
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
 
     proc.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString()
+      stdoutChunks.push(data)
     })
 
     proc.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString()
+      stderrChunks.push(data)
     })
 
     // Send prompt via stdin to avoid argument length limits
@@ -61,6 +62,9 @@ async function summarizeCLI(prompt: string): Promise<string> {
     proc.stdin.end()
 
     proc.on('close', (code) => {
+      const stdout = Buffer.concat(stdoutChunks).toString('utf-8')
+      const stderr = Buffer.concat(stderrChunks).toString('utf-8')
+
       if (code !== 0) {
         reject(new Error(`Claude Code CLI failed (code ${code}): ${stderr}`))
         return
