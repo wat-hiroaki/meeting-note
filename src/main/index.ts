@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, session, desktopCapturer } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
+import { cleanupStaleTempFiles } from './recorder'
 import { createTray } from './tray'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { getConfig } from './config'
@@ -107,6 +108,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Clean up stale temp files from previous sessions
+  cleanupStaleTempFiles()
+
   registerIpcHandlers()
   createWindow()
 })

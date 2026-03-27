@@ -32,6 +32,13 @@ export function loadConfig(): Config {
       raw = YAML.parse(content) || {}
     } catch (err) {
       console.error('[Config] Failed to parse config:', err)
+      // Back up the corrupt config file so the user can recover manually
+      try {
+        const backupPath = configPath + '.corrupt.' + Date.now()
+        const { copyFileSync } = require('fs')
+        copyFileSync(configPath, backupPath)
+        console.error('[Config] Corrupt config backed up to:', backupPath)
+      } catch { /* ignore backup errors */ }
     }
   }
 
@@ -52,12 +59,22 @@ export function saveConfig(config: Config): void {
 
   if (!result.success) {
     console.error('[Config] Invalid config:', result.error.issues)
-    return
+    throw new Error(`Invalid config: ${result.error.issues.map(i => i.message).join(', ')}`)
   }
 
   cachedConfig = result.data
   const yaml = YAML.stringify(result.data)
-  writeFileSync(configPath, yaml)
+
+  // Atomic write: write to temp file first, then rename
+  const tmpPath = configPath + '.tmp'
+  try {
+    writeFileSync(tmpPath, yaml)
+    const { renameSync } = require('fs')
+    renameSync(tmpPath, configPath)
+  } catch {
+    // Fall back to direct write if rename fails (e.g. cross-device)
+    writeFileSync(configPath, yaml)
+  }
 }
 
 export function getConfig(): Config {

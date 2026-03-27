@@ -35,12 +35,18 @@ function formatFilename(date: Date, format: string): string {
   const h = date.getHours().toString().padStart(2, '0')
   const mi = date.getMinutes().toString().padStart(2, '0')
 
-  return format
+  let filename = format
     .replace('YYYY', y.toString())
     .replace('MM', mo)
     .replace('DD', d)
     .replace('HH', h)
     .replace('mm', mi)
+
+  // Remove characters that are invalid in filenames across platforms
+  // eslint-disable-next-line no-control-regex
+  filename = filename.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+
+  return filename
 }
 
 const FORMAT_LABELS: Record<MeetingFormat, string> = {
@@ -67,7 +73,9 @@ function buildMarkdown(data: MeetingData, date: Date): string {
   md += `language: ${data.transcript.language}\n`
   md += `format: ${data.meetingFormat}\n`
   if (data.calendarEventTitle) {
-    md += `meeting: "${data.calendarEventTitle}"\n`
+    // Escape quotes and newlines in YAML string value
+    const safeTitle = data.calendarEventTitle.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')
+    md += `meeting: "${safeTitle}"\n`
   }
   if (data.actionItems.length > 0) {
     md += `action_items: ${data.actionItems.length}\n`

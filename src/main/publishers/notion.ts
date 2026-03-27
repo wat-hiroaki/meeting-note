@@ -5,6 +5,14 @@ import type { MeetingData } from './markdown'
 
 // Notion API allows max 100 blocks per request
 const NOTION_MAX_BLOCKS = 100
+// Notion API allows max 2000 characters per rich_text content
+const NOTION_MAX_TEXT_LENGTH = 2000
+
+/** Truncate text to fit Notion's 2000-character rich_text limit */
+function truncateText(text: string, maxLen = NOTION_MAX_TEXT_LENGTH): string {
+  if (text.length <= maxLen) return text
+  return text.slice(0, maxLen - 3) + '...'
+}
 
 const FORMAT_LABELS: Record<string, string> = {
   auto: 'Auto',
@@ -129,7 +137,7 @@ export async function publishToNotion(data: MeetingData): Promise<string> {
                 text: { content: `[${formatTime(seg.start)}] ` },
                 annotations: { bold: true as const, italic: false as const, strikethrough: false as const, underline: false as const, code: false as const, color: 'default' as const }
               },
-              { type: 'text' as const, text: { content: seg.text } }
+              { type: 'text' as const, text: { content: truncateText(seg.text) } }
             ]
           }
         } as BlockObjectRequest))
@@ -282,7 +290,14 @@ function buildRichText(text: string): Array<{
   }
 
   if (parts.length === 0) {
-    parts.push({ type: 'text', text: { content: text } })
+    parts.push({ type: 'text', text: { content: truncateText(text) } })
+  }
+
+  // Ensure no individual text content exceeds the Notion limit
+  for (const part of parts) {
+    if (part.text.content.length > NOTION_MAX_TEXT_LENGTH) {
+      part.text.content = truncateText(part.text.content)
+    }
   }
 
   return parts

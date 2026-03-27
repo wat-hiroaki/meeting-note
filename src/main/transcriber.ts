@@ -294,7 +294,9 @@ async function transcribeRemote(audioPath: string): Promise<TranscriptResult> {
 
   // 2. SSH execute (async, non-blocking)
   const output = await new Promise<string>((resolve, reject) => {
-    const cmd = `${pythonPath} ${scriptPath} "${remoteAudioPath}" --model ${config.transcription.model} --language ${config.transcription.language} --output json`
+    // Shell-escape all user-provided values to prevent injection
+    const shellEscape = (s: string): string => "'" + s.replace(/'/g, "'\\''") + "'"
+    const cmd = `${shellEscape(pythonPath)} ${shellEscape(scriptPath)} ${shellEscape(remoteAudioPath)} --model ${shellEscape(config.transcription.model)} --language ${shellEscape(config.transcription.language)} --output json`
 
     const proc = spawn('ssh', [sshTarget, cmd], {
       windowsHide: true

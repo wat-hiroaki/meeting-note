@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 interface UseAudioRecorderReturn {
   start: (micDeviceId?: string) => Promise<void>
@@ -188,7 +188,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         }
       }
 
+      // Guard: prevent double handling if both onerror and onstop fire
+      let handledRef = false
+
       recorder.onerror = () => {
+        if (handledRef) return
+        handledRef = true
         console.error('[AudioRecorder] MediaRecorder error event')
         setError('Recording error — audio data may be incomplete')
         setIsRecording(false)
@@ -207,6 +212,8 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
       // When onstop fires (from .stop() or track ended), collect data
       recorder.onstop = async () => {
+        if (handledRef) return
+        handledRef = true
         const buffer = await collectBuffer()
         setIsRecording(false)
         setIsPaused(false)
@@ -317,6 +324,39 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     // Also resume AudioContext if suspended
     if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
       audioContextRef.current.resume().catch(() => { /* ignore */ })
+    }
+  }, [])
+
+  // Cleanup on unmount — stop any active recording and release resources
+  // This prevents leaked MediaStreams/AudioContexts if the component unmounts mid-recording
+  useEffect(() => {
+    // Capture refs locally so cleanup works correctly
+    const recorderRef = mediaRecorderRef
+    const cleanupFn = (): void => {
+      if (maxDurationTimerRef.current) {
+        clearTimeout(maxDurationTimerRef.current)
+        maxDurationTimerRef.current = null
+      }
+      try {
+        displayStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+      } catch { /* ignore */ }
+      try {
+        micStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+      } catch { /* ignore */ }
+      try {
+        mixedStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+      } catch { /* ignore */ }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(() => { /* ignore */ })
+      }
+    }
+
+    return () => {
+      const recorder = recorderRef.current
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop() } catch { /* ignore */ }
+      }
+      cleanupFn()
     }
   }, [])
 

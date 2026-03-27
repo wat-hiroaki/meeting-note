@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { existsSync, statSync } from 'fs'
+import { existsSync, statSync, unlinkSync } from 'fs'
 import { transcribe } from './transcriber'
 import { summarize } from './summarizer'
 import { saveMarkdown } from './publishers/markdown'
@@ -73,6 +73,12 @@ export async function runPipeline(
     sendProgress(win, 'transcribing', 10)
     const transcript = await transcribe(audioPath)
     sendProgress(win, 'transcribing', 40)
+
+    // Sanitize segments: filter out null/undefined text
+    transcript.segments = transcript.segments.filter(s => s.text != null).map(s => ({
+      ...s,
+      text: (s.text || '').trim()
+    }))
 
     // Validate transcript has meaningful content
     const totalText = transcript.segments.map(s => s.text).join('').trim()
@@ -184,6 +190,9 @@ export async function runPipeline(
         win.webContents.send('recording:status', 'done')
       } catch { /* window destroyed */ }
     }
+
+    // Clean up the intermediate WAV file (markdown has the summary, WAV is no longer needed)
+    try { unlinkSync(audioPath) } catch { /* ignore cleanup errors */ }
 
     // Send partial errors as warnings (pipeline still succeeded)
     if (errors.length > 0 && isWindowAlive(win)) {

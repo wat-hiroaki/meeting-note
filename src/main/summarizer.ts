@@ -327,6 +327,13 @@ export async function summarize(transcript: TranscriptResult, format?: MeetingFo
     prompt += `IMPORTANT: Output the entire summary in: ${lang}.\n\n`
   }
 
+  // Guard: warn if transcript is very large (may exceed API context limits)
+  const charCount = text.length
+  if (charCount > 500_000) {
+    console.warn(`[Summarizer] Transcript is very large (${Math.round(charCount / 1000)}K chars). Summary quality may degrade.`)
+    prompt += `⚠️ この文字起こしは非常に長い（${Math.round(charCount / 1000)}K文字）ため、最も重要な部分に焦点を当ててください。\n\n`
+  }
+
   prompt += '---\n## 文字起こし（タイムスタンプ付き）:\n' + text
 
   let summary: string

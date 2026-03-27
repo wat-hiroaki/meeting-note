@@ -1,12 +1,36 @@
 import { spawn, execSync } from 'child_process'
 import { join } from 'path'
 import { app } from 'electron'
-import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'fs'
 
 function getTempDir(): string {
   const dir = join(app.getPath('temp'), 'meeting-note')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return dir
+}
+
+/**
+ * Clean up stale temp files from previous sessions (older than 24 hours).
+ * Called at app startup to prevent unbounded disk usage.
+ */
+export function cleanupStaleTempFiles(): void {
+  try {
+    const dir = getTempDir()
+    const entries = readdirSync(dir)
+    const now = Date.now()
+    const MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry)
+      try {
+        const stats = statSync(fullPath)
+        if (now - stats.mtimeMs > MAX_AGE_MS) {
+          unlinkSync(fullPath)
+          console.log('[Recorder] Cleaned up stale temp file:', entry)
+        }
+      } catch { /* ignore individual file errors */ }
+    }
+  } catch { /* ignore if temp dir doesn't exist yet */ }
 }
 
 // Resolve ffmpeg binary — check PATH first, then known install locations
@@ -155,6 +179,10 @@ export async function convertWebmToWav(webmPath: string): Promise<string> {
       }
 
       console.log('[Recorder] Converted to WAV:', wavPath, 'size:', outputStats.size)
+
+      // Clean up the source webm file after successful conversion
+      try { unlinkSync(webmPath) } catch { /* ignore cleanup errors */ }
+
       resolve(wavPath)
     })
 

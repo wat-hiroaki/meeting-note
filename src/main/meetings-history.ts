@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs'
 import type { MeetingHistoryEntry, ActionItem } from '../shared/types'
 
 function getHistoryPath(): string {
@@ -14,15 +14,39 @@ function loadHistory(): MeetingHistoryEntry[] {
   if (!existsSync(path)) return []
   try {
     const data = readFileSync(path, 'utf-8')
-    return JSON.parse(data) as MeetingHistoryEntry[]
-  } catch {
+    const parsed = JSON.parse(data)
+    // Validate it's actually an array
+    if (!Array.isArray(parsed)) {
+      console.error('[History] History file is not an array, resetting')
+      return []
+    }
+    return parsed as MeetingHistoryEntry[]
+  } catch (err) {
+    console.error('[History] Failed to load history:', err)
+    // Back up the corrupt file
+    try {
+      const backupPath = path + '.corrupt.' + Date.now()
+      const { copyFileSync } = require('fs')
+      copyFileSync(path, backupPath)
+      console.error('[History] Corrupt history backed up to:', backupPath)
+    } catch { /* ignore */ }
     return []
   }
 }
 
 function saveHistory(entries: MeetingHistoryEntry[]): void {
   const path = getHistoryPath()
-  writeFileSync(path, JSON.stringify(entries, null, 2), 'utf-8')
+  const data = JSON.stringify(entries, null, 2)
+
+  // Atomic write: write to temp file then rename
+  const tmpPath = path + '.tmp'
+  try {
+    writeFileSync(tmpPath, data, 'utf-8')
+    renameSync(tmpPath, path)
+  } catch {
+    // Fall back to direct write if rename fails
+    writeFileSync(path, data, 'utf-8')
+  }
 }
 
 export function addMeetingToHistory(entry: MeetingHistoryEntry): void {
