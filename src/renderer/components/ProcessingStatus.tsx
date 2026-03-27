@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface Progress {
   step: string
@@ -36,11 +36,21 @@ export function ProcessingStatus({ outputPath, error, onDismiss }: ProcessingSta
     }
   }
 
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clean up the copied timer on unmount
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    }
+  }, [])
+
   const handleCopyPath = (): void => {
     if (outputPath) {
       window.electronAPI.copyToClipboard(outputPath)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
     }
   }
 

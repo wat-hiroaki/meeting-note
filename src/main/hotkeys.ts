@@ -2,9 +2,21 @@ import { globalShortcut, BrowserWindow } from 'electron'
 
 const mod = process.platform === 'darwin' ? 'Cmd' : 'Ctrl'
 
+function safeRegister(accelerator: string, callback: () => void): void {
+  try {
+    const success = globalShortcut.register(accelerator, callback)
+    if (!success) {
+      console.warn(`[Hotkeys] Failed to register ${accelerator} — may be in use by another app`)
+    }
+  } catch (err) {
+    console.error(`[Hotkeys] Error registering ${accelerator}:`, err)
+  }
+}
+
 export function registerHotkeys(mainWindow: BrowserWindow): void {
   // Toggle window visibility
-  globalShortcut.register(`${mod}+Shift+M`, () => {
+  safeRegister(`${mod}+Shift+M`, () => {
+    if (mainWindow.isDestroyed()) return
     if (mainWindow.isVisible()) {
       mainWindow.hide()
     } else {
@@ -14,17 +26,20 @@ export function registerHotkeys(mainWindow: BrowserWindow): void {
   })
 
   // Start recording
-  globalShortcut.register(`${mod}+Shift+R`, () => {
+  safeRegister(`${mod}+Shift+R`, () => {
+    if (mainWindow.isDestroyed()) return
     mainWindow.webContents.send('hotkey:action', 'record')
   })
 
   // Pause/Resume
-  globalShortcut.register(`${mod}+Shift+P`, () => {
+  safeRegister(`${mod}+Shift+P`, () => {
+    if (mainWindow.isDestroyed()) return
     mainWindow.webContents.send('hotkey:action', 'pause')
   })
 
   // Stop
-  globalShortcut.register(`${mod}+Shift+S`, () => {
+  safeRegister(`${mod}+Shift+S`, () => {
+    if (mainWindow.isDestroyed()) return
     mainWindow.webContents.send('hotkey:action', 'stop')
   })
 }

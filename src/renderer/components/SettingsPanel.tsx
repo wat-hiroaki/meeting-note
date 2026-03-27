@@ -103,11 +103,28 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     setSaved(false)
   }, [editConfig])
 
+  const [saving, setSaving] = useState(false)
+
   const handleSave = useCallback(async (): Promise<void> => {
-    await saveConfig()
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setSaving(true)
+    try {
+      await saveConfig()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      console.error('[Settings] Save failed:', err)
+    } finally {
+      setSaving(false)
+    }
   }, [saveConfig])
+
+  const handleClose = useCallback((): void => {
+    if (dirty) {
+      // Auto-save on close to prevent lost changes
+      saveConfig().catch(() => { /* ignore */ })
+    }
+    onClose()
+  }, [dirty, saveConfig, onClose])
 
   if (loading) {
     return (
@@ -128,17 +145,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           )}
           <button
             onClick={handleSave}
-            disabled={!dirty}
+            disabled={!dirty || saving}
             className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-              dirty
+              dirty && !saving
                 ? 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/20'
                 : 'bg-white/5 text-white/30 cursor-not-allowed'
             }`}
           >
-            Save
+            {saving ? 'Saving...' : 'Save'}
           </button>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
             title="Close settings"
           >

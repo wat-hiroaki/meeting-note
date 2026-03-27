@@ -76,22 +76,27 @@ function getRunningProcesses(): string[] {
 function isBrowserUsingAudio(): boolean {
   try {
     if (process.platform === 'win32') {
-      // Check if audiodg.exe is running (Windows audio engine active)
-      const output = execSync('tasklist /FI "IMAGENAME eq audiodg.exe" /FO CSV /NH', {
-        timeout: 5000,
-        encoding: 'utf-8',
-        windowsHide: true,
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
-      return output.includes('audiodg.exe')
+      // On Windows, audiodg.exe runs whenever *any* audio is playing,
+      // so it's not a reliable indicator of browser-based meetings.
+      // Instead, skip this heuristic to avoid false positives.
+      // Browser-based meetings (Google Meet) in the browser can't be
+      // reliably detected without invasive tab inspection.
+      return false
     } else if (process.platform === 'darwin') {
-      // On macOS, check if coreaudiod has active clients
-      const output = execSync('lsof -i -n -P 2>/dev/null | grep -i "meet\\|zoom\\|teams" || true', {
-        timeout: 5000,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
-      return output.trim().length > 0
+      // On macOS, check for network connections from browser processes
+      // that look like meeting URLs
+      try {
+        const output = execSync('lsof -i -n -P 2>/dev/null || true', {
+          timeout: 5000,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+        // Check for connections to known meeting service IPs/domains
+        const meetingIndicators = ['meet.google.com', '8.8.8', 'stun', 'turn']
+        return meetingIndicators.some(indicator => output.toLowerCase().includes(indicator))
+      } catch {
+        return false
+      }
     }
     return false
   } catch {

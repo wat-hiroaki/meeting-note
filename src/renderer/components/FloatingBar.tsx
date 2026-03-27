@@ -155,6 +155,20 @@ export function FloatingBar(): React.JSX.Element {
     }
   }, [])
 
+  // Close panels on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        if (showSettings) setShowSettings(false)
+        else if (showHistory) setShowHistory(false)
+        else if (showFormatPicker) setShowFormatPicker(false)
+        else if (consentShown) setConsentShown(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showSettings, showHistory, showFormatPicker, consentShown])
+
   // Sync meeting format from config
   useEffect(() => {
     if (config.summary?.meetingFormat) {
@@ -300,7 +314,7 @@ export function FloatingBar(): React.JSX.Element {
 
         {/* History */}
         <ControlButton
-          onClick={() => { setShowHistory(!showHistory); setShowSettings(false) }}
+          onClick={() => { setShowHistory(!showHistory); setShowSettings(false); setShowFormatPicker(false) }}
           title="Meetings"
           disabled={isProcessing}
         >
@@ -309,7 +323,7 @@ export function FloatingBar(): React.JSX.Element {
 
         {/* Settings */}
         <ControlButton
-          onClick={() => { setShowSettings(!showSettings); setShowHistory(false) }}
+          onClick={() => { setShowSettings(!showSettings); setShowHistory(false); setShowFormatPicker(false) }}
           title="Settings"
           disabled={isProcessing}
         >

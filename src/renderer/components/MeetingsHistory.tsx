@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface ActionItem {
   text: string
@@ -51,21 +51,34 @@ const PRIORITY_COLORS: Record<string, string> = {
 export function MeetingsHistory({ onClose }: MeetingsHistoryProps): React.JSX.Element {
   const [meetings, setMeetings] = useState<MeetingEntry[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Debounce search query (300ms)
+  useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery)
+    }, 300)
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    }
+  }, [searchQuery])
 
   const loadMeetings = useCallback(async () => {
     setLoading(true)
     try {
-      const data = searchQuery
-        ? await window.electronAPI.searchMeetings(searchQuery)
+      const data = debouncedQuery
+        ? await window.electronAPI.searchMeetings(debouncedQuery)
         : await window.electronAPI.getMeetingsHistory()
       setMeetings(data as MeetingEntry[])
     } catch {
       setMeetings([])
     }
     setLoading(false)
-  }, [searchQuery])
+  }, [debouncedQuery])
 
   useEffect(() => {
     loadMeetings()

@@ -1,6 +1,24 @@
 import { getConfig } from './config'
 import type { CalendarEvent } from '../shared/types'
 
+const CALENDAR_TIMEOUT_MS = 15_000 // 15 seconds for API calls
+
+/** Fetch with timeout using AbortController */
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = CALENDAR_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Calendar API request timed out after ${Math.round(timeoutMs / 1000)}s`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function fetchUpcomingEvents(maxResults = 10): Promise<CalendarEvent[]> {
   const config = getConfig()
 
@@ -24,7 +42,7 @@ async function fetchGoogleCalendarEvents(maxResults: number): Promise<CalendarEv
 
   try {
     // Refresh access token
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    const tokenResponse = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -36,7 +54,11 @@ async function fetchGoogleCalendarEvents(maxResults: number): Promise<CalendarEv
     })
 
     if (!tokenResponse.ok) {
-      throw new Error(`Token refresh failed: ${tokenResponse.status}`)
+      const errorBody = await tokenResponse.text().catch(() => '')
+      if (tokenResponse.status === 400 && errorBody.includes('invalid_grant')) {
+        throw new Error('Google Calendar refresh token is expired or revoked. Please re-authorize in Settings.')
+      }
+      throw new Error(`Token refresh failed (${tokenResponse.status}): ${errorBody.slice(0, 200)}`)
     }
 
     const tokenData = (await tokenResponse.json()) as { access_token: string }
@@ -55,7 +77,7 @@ async function fetchGoogleCalendarEvents(maxResults: number): Promise<CalendarEv
       orderBy: 'startTime'
     })
 
-    const calResponse = await fetch(
+    const calResponse = await fetchWithTimeout(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
       {
         headers: { Authorization: `Bearer ${accessToken}` }

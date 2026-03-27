@@ -138,6 +138,9 @@ export function registerIpcHandlers(): void {
     const result = ConfigSchema.safeParse(merged)
     if (result.success) {
       saveConfig(result.data)
+    } else {
+      console.error('[IPC] Config validation failed:', result.error.issues)
+      throw new Error(`Invalid config: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
     }
   })
 

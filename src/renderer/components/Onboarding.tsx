@@ -143,6 +143,14 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     }
   }, [step, setup.transcriptionMode, setup.whisperModel, whisperOk])
 
+  // Clean up whisper download status listener
+  useEffect(() => {
+    const cleanup = window.electronAPI.onWhisperDownloadStatus((msg) => {
+      console.log('[Onboarding] Whisper download status:', msg.status)
+    })
+    return cleanup
+  }, [])
+
   const handleDownloadModel = (): void => {
     setDownloading(true)
     window.electronAPI.downloadWhisperModel(setup.whisperModel).then((ok) => {
@@ -169,7 +177,12 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
     return true
   })()
 
+  const [finishing, setFinishing] = useState(false)
+  const [finishError, setFinishError] = useState<string | null>(null)
+
   const handleFinish = (): void => {
+    setFinishing(true)
+    setFinishError(null)
     window.electronAPI.setConfig({
       recording: {
         micDevice: setup.micDevice
@@ -197,7 +210,11 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
         directory: setup.outputDirectory
       },
       onboarded: true
-    }).then(onComplete).catch(console.error)
+    }).then(onComplete).catch((err) => {
+      console.error('[Onboarding] Save failed:', err)
+      setFinishError('Failed to save settings. Please try again.')
+      setFinishing(false)
+    })
   }
 
   const installCmd = isMac ? 'brew install ffmpeg' : 'winget install Gyan.FFmpeg'
@@ -673,11 +690,16 @@ export function Onboarding({ onComplete }: OnboardingProps): React.JSX.Element {
               </div>
             </div>
 
+            {finishError && (
+              <div className="rounded-lg px-3 py-2 bg-red-500/10 text-red-400 text-xs">{finishError}</div>
+            )}
+
             <button
               onClick={handleFinish}
-              className="w-full py-2.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-sm font-medium transition-colors border border-blue-500/20"
+              disabled={finishing}
+              className="w-full py-2.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-sm font-medium transition-colors border border-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Start using meeting-note
+              {finishing ? 'Setting up...' : 'Start using meeting-note'}
             </button>
           </div>
         )}

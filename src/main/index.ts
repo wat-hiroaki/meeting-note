@@ -26,7 +26,14 @@ process.on('unhandledRejection', (reason) => {
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
-  const config = getConfig()
+  let config
+  try {
+    config = getConfig()
+  } catch (err) {
+    console.error('[Main] Failed to load config, using defaults:', err)
+    const { ConfigSchema } = require('../shared/types')
+    config = ConfigSchema.parse({})
+  }
   const isOnboarded = config.onboarded
 
   const isMac = process.platform === 'darwin'
@@ -76,8 +83,18 @@ function createWindow(): void {
 
   // Auto-approve display media requests with loopback audio
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
-    const sources = await desktopCapturer.getSources({ types: ['screen'] })
-    callback({ video: sources[0], audio: 'loopback' })
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] })
+      if (sources.length === 0) {
+        console.error('[Main] No screen sources available for display media')
+        callback({ video: null as unknown as Electron.DesktopCapturerSource })
+        return
+      }
+      callback({ video: sources[0], audio: 'loopback' })
+    } catch (err) {
+      console.error('[Main] Failed to get screen sources:', err)
+      callback({ video: null as unknown as Electron.DesktopCapturerSource })
+    }
   })
 
   // Setup tray and hotkeys
