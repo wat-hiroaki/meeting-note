@@ -2,11 +2,15 @@ import { join, resolve } from 'path'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { getConfig } from '../config'
 import type { TranscriptResult } from '../transcriber'
+import type { MeetingFormat, ActionItem } from '../../shared/types'
 
 export interface MeetingData {
   transcript: TranscriptResult
   summary: string
   startedAt: Date
+  meetingFormat: MeetingFormat
+  actionItems: ActionItem[]
+  calendarEventTitle?: string
 }
 
 export function saveMarkdown(data: MeetingData): string {
@@ -39,6 +43,15 @@ function formatFilename(date: Date, format: string): string {
     .replace('mm', mi)
 }
 
+const FORMAT_LABELS: Record<MeetingFormat, string> = {
+  auto: 'Auto',
+  sales: 'Sales Call',
+  standup: 'Stand-up',
+  team: 'Team Meeting',
+  one_on_one: '1on1',
+  brainstorm: 'Brainstorm'
+}
+
 function buildMarkdown(data: MeetingData, date: Date): string {
   const dateStr = date.toISOString().split('T')[0]
   const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
@@ -52,7 +65,19 @@ function buildMarkdown(data: MeetingData, date: Date): string {
   md += `time: ${timeStr}\n`
   md += `duration: ${durationMin}min\n`
   md += `language: ${data.transcript.language}\n`
+  md += `format: ${data.meetingFormat}\n`
+  if (data.calendarEventTitle) {
+    md += `meeting: "${data.calendarEventTitle}"\n`
+  }
+  if (data.actionItems.length > 0) {
+    md += `action_items: ${data.actionItems.length}\n`
+  }
   md += '---\n\n'
+
+  // Title
+  const title = data.calendarEventTitle || `Meeting ${dateStr} ${timeStr}`
+  md += `# ${title}\n\n`
+  md += `> ${FORMAT_LABELS[data.meetingFormat]} | ${durationMin}min | ${dateStr} ${timeStr}\n\n`
 
   // Summary
   md += data.summary + '\n\n'

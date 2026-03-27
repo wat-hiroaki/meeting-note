@@ -2,12 +2,19 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import type { RecordingStatus } from '../components/StatusIndicator'
 import { useAudioRecorder } from './useAudioRecorder'
 
+interface StartOptions {
+  micDevice?: string
+  meetingFormat?: string
+  calendarEventTitle?: string
+  calendarEventId?: string
+}
+
 interface UseRecordingReturn {
   status: RecordingStatus
   seconds: number
   error: string | null
   outputPath: string | null
-  start: (options?: { micDevice?: string }) => void
+  start: (options?: StartOptions) => void
   pause: () => void
   resume: () => void
   stop: () => void
@@ -37,15 +44,20 @@ export function useRecording(): UseRecordingReturn {
     }
   }, [])
 
-  const start = useCallback((options?: { micDevice?: string }): void => {
+  const start = useCallback((options?: StartOptions): void => {
     setSeconds(0)
     setError(null)
     setOutputPath(null)
     setStatus('recording')
     startTimer()
 
-    // Notify main process (for timestamp tracking)
-    window.electronAPI.startRecording(options).catch(() => { /* ignore */ })
+    // Notify main process (for timestamp tracking and meeting format)
+    window.electronAPI.startRecording({
+      micDevice: options?.micDevice,
+      meetingFormat: options?.meetingFormat as 'auto' | 'sales' | 'standup' | 'team' | 'one_on_one' | 'brainstorm' | undefined,
+      calendarEventTitle: options?.calendarEventTitle,
+      calendarEventId: options?.calendarEventId
+    }).catch(() => { /* ignore */ })
 
     // Start Web Audio recording
     audioRecorder.start(options?.micDevice).catch((err: unknown) => {

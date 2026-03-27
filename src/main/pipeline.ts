@@ -6,7 +6,9 @@ import { publishToNotion } from './publishers/notion'
 import { publishToSlack } from './publishers/slack'
 import { publishToRemote } from './publishers/remote'
 import { getConfig } from './config'
+import { addMeetingToHistory, generateMeetingId } from './meetings-history'
 import type { MeetingData } from './publishers/markdown'
+import type { MeetingFormat } from '../shared/types'
 
 type ProgressStep = 'transcribing' | 'summarizing' | 'saving' | 'publishing' | 'done'
 
@@ -29,7 +31,19 @@ function sendError(win: BrowserWindow, message: string): void {
   win.webContents.send('recording:status', 'error')
 }
 
-export async function runPipeline(audioPath: string, win: BrowserWindow, startedAt: Date): Promise<void> {
+export interface PipelineOptions {
+  meetingFormat?: MeetingFormat
+  customInstructions?: string
+  calendarEventTitle?: string
+  calendarEventId?: string
+}
+
+export async function runPipeline(
+  audioPath: string,
+  win: BrowserWindow,
+  startedAt: Date,
+  options?: PipelineOptions
+): Promise<void> {
   const config = getConfig()
 
   try {
@@ -38,21 +52,43 @@ export async function runPipeline(audioPath: string, win: BrowserWindow, started
     const transcript = await transcribe(audioPath)
     sendProgress(win, 'transcribing', 40)
 
-    // Step 2: Summarize
+    // Step 2: Summarize with meeting format
     sendProgress(win, 'summarizing', 50)
-    const summary = await summarize(transcript)
+    const summaryResult = await summarize(
+      transcript,
+      options?.meetingFormat,
+      options?.customInstructions
+    )
     sendProgress(win, 'summarizing', 70)
 
     const meetingData: MeetingData = {
       transcript,
-      summary,
-      startedAt
+      summary: summaryResult.summary,
+      startedAt,
+      meetingFormat: summaryResult.meetingFormat,
+      actionItems: summaryResult.actionItems,
+      calendarEventTitle: options?.calendarEventTitle
     }
 
     // Step 3: Save markdown
     sendProgress(win, 'saving', 75)
     const mdPath = saveMarkdown(meetingData)
     sendProgress(win, 'saving', 80)
+
+    // Step 3.5: Save to meetings history
+    const meetingId = generateMeetingId()
+    addMeetingToHistory({
+      id: meetingId,
+      date: startedAt.toISOString(),
+      title: options?.calendarEventTitle || `Meeting ${startedAt.toISOString().split('T')[0]}`,
+      duration: transcript.duration,
+      format: summaryResult.meetingFormat,
+      summaryPath: mdPath,
+      calendarEventId: options?.calendarEventId,
+      calendarEventTitle: options?.calendarEventTitle,
+      actionItems: summaryResult.actionItems,
+      tags: []
+    })
 
     // Step 4: Publish to integrations
     sendProgress(win, 'publishing', 85)

@@ -1,13 +1,20 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
+import type { MeetingHistoryEntry, ActionItem, CalendarEvent, MeetingFormat } from '../shared/types'
+
+interface DetectedMeeting {
+  platform: 'zoom' | 'google_meet' | 'teams' | 'other'
+  processName: string
+}
 
 const api = {
   // Window controls
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   closeWindow: (): Promise<void> => ipcRenderer.invoke('window:close'),
 
-  // Recording (legacy — kept for compatibility)
-  startRecording: (options?: { micDevice?: string }): Promise<void> => ipcRenderer.invoke('recording:start', options),
+  // Recording
+  startRecording: (options?: { micDevice?: string; meetingFormat?: MeetingFormat; calendarEventTitle?: string; calendarEventId?: string }): Promise<void> =>
+    ipcRenderer.invoke('recording:start', options),
   pauseRecording: (): Promise<void> => ipcRenderer.invoke('recording:pause'),
   resumeRecording: (): Promise<void> => ipcRenderer.invoke('recording:resume'),
   stopRecording: (): Promise<void> => ipcRenderer.invoke('recording:stop'),
@@ -42,7 +49,29 @@ const api = {
     ipcRenderer.on('whisper:download-status', handler)
     return () => ipcRenderer.removeListener('whisper:download-status', handler)
   },
-  setWindowMode: (mode: 'bar' | 'onboarding' | 'settings' | 'expanded'): Promise<void> => ipcRenderer.invoke('window:setMode', mode),
+
+  // Meetings History
+  getMeetingsHistory: (limit?: number, offset?: number): Promise<MeetingHistoryEntry[]> =>
+    ipcRenderer.invoke('meetings:getHistory', limit, offset),
+  getMeetingById: (id: string): Promise<MeetingHistoryEntry | null> =>
+    ipcRenderer.invoke('meetings:getById', id),
+  searchMeetings: (query: string): Promise<MeetingHistoryEntry[]> =>
+    ipcRenderer.invoke('meetings:search', query),
+  updateMeetingActionItem: (meetingId: string, actionIndex: number, updates: Partial<ActionItem>): Promise<boolean> =>
+    ipcRenderer.invoke('meetings:updateActionItem', meetingId, actionIndex, updates),
+
+  // Calendar
+  getCalendarEvents: (): Promise<CalendarEvent[]> =>
+    ipcRenderer.invoke('calendar:getEvents'),
+  getNextMeeting: (): Promise<CalendarEvent | null> =>
+    ipcRenderer.invoke('calendar:getNextMeeting'),
+
+  // Meeting Detection
+  detectMeeting: (): Promise<DetectedMeeting | null> =>
+    ipcRenderer.invoke('meeting:detect'),
+
+  // Window mode
+  setWindowMode: (mode: 'bar' | 'onboarding' | 'settings' | 'expanded' | 'history'): Promise<void> => ipcRenderer.invoke('window:setMode', mode),
   platform: process.platform,
 
   // Events from main
@@ -70,6 +99,16 @@ const api = {
     const handler = (_event: IpcRendererEvent, path: string): void => callback(path)
     ipcRenderer.on('pipeline:output', handler)
     return () => ipcRenderer.removeListener('pipeline:output', handler)
+  },
+  onMeetingDetected: (callback: (meeting: DetectedMeeting) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, meeting: DetectedMeeting): void => callback(meeting)
+    ipcRenderer.on('meeting:detected', handler)
+    return () => ipcRenderer.removeListener('meeting:detected', handler)
+  },
+  onMeetingEnded: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('meeting:ended', handler)
+    return () => ipcRenderer.removeListener('meeting:ended', handler)
   }
 }
 

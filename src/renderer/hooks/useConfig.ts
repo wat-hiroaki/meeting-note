@@ -12,6 +12,8 @@ interface ConfigData {
   summary: {
     mode: string
     language: string
+    meetingFormat: string
+    customInstructions: string
     anthropic: { apiKey: string; model: string; maxTokens: number }
     openai: { apiKey: string; model: string }
     gemini: { apiKey: string; model: string }
@@ -20,6 +22,20 @@ interface ConfigData {
   notion: { enabled: boolean; apiKey: string; databaseId: string }
   slack: { enabled: boolean; token: string; channel: string }
   remote: { enabled: boolean; host: string; user: string; path: string }
+  calendar: {
+    enabled: boolean
+    provider: string
+    google: { clientId: string; clientSecret: string; refreshToken: string }
+    autoDetectMeetings: boolean
+  }
+  meetingDetection: {
+    enabled: boolean
+    autoPrompt: boolean
+  }
+  consent: {
+    enabled: boolean
+    message: string
+  }
 }
 
 const defaultConfig: ConfigData = {
@@ -34,6 +50,8 @@ const defaultConfig: ConfigData = {
   summary: {
     mode: 'cli',
     language: 'en',
+    meetingFormat: 'auto',
+    customInstructions: '',
     anthropic: { apiKey: '', model: 'claude-sonnet-4-20250514', maxTokens: 4096 },
     openai: { apiKey: '', model: 'gpt-4o' },
     gemini: { apiKey: '', model: 'gemini-2.5-flash' }
@@ -41,7 +59,21 @@ const defaultConfig: ConfigData = {
   output: { directory: './meetings' },
   notion: { enabled: false, apiKey: '', databaseId: '' },
   slack: { enabled: false, token: '', channel: '' },
-  remote: { enabled: false, host: '', user: '', path: '~/meetings' }
+  remote: { enabled: false, host: '', user: '', path: '~/meetings' },
+  calendar: {
+    enabled: false,
+    provider: 'google',
+    google: { clientId: '', clientSecret: '', refreshToken: '' },
+    autoDetectMeetings: true
+  },
+  meetingDetection: {
+    enabled: true,
+    autoPrompt: true
+  },
+  consent: {
+    enabled: false,
+    message: 'This meeting is being recorded and transcribed by AI.'
+  }
 }
 
 export function useConfig(): {
@@ -59,7 +91,7 @@ export function useConfig(): {
   useEffect(() => {
     window.electronAPI.getConfig().then((data) => {
       if (data && typeof data === 'object') {
-        const loaded = { ...defaultConfig, ...(data as Partial<ConfigData>) }
+        const loaded = deepMergeConfig(defaultConfig, data as Partial<ConfigData>)
         setConfig(loaded)
         savedRef.current = loaded
       }
@@ -82,4 +114,19 @@ export function useConfig(): {
   }, [config])
 
   return { config, editConfig, saveConfig, dirty, loading }
+}
+
+function deepMergeConfig(defaults: ConfigData, source: Partial<ConfigData>): ConfigData {
+  const result = { ...defaults }
+  for (const key of Object.keys(source) as (keyof ConfigData)[]) {
+    const val = source[key]
+    if (val && typeof val === 'object' && !Array.isArray(val) && typeof defaults[key] === 'object') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      result[key] = { ...(defaults[key] as any), ...(val as any) }
+    } else if (val !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      result[key] = val as any
+    }
+  }
+  return result
 }

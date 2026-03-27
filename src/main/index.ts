@@ -5,6 +5,7 @@ import { registerIpcHandlers } from './ipc'
 import { createTray } from './tray'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { getConfig } from './config'
+import { startMeetingDetection, stopMeetingDetection } from './meeting-detector'
 
 // Prevent crash dialogs for non-critical spawn errors (e.g. ffmpeg not installed)
 process.on('uncaughtException', (err) => {
@@ -75,6 +76,28 @@ function createWindow(): void {
   // Setup tray and hotkeys
   createTray(mainWindow)
   registerHotkeys(mainWindow)
+
+  // Start meeting detection if enabled
+  if (isOnboarded && config.meetingDetection.enabled) {
+    startMeetingDetection(
+      (meeting) => {
+        console.log('[Main] Meeting detected:', meeting.platform)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('meeting:detected', meeting)
+          // Show window if hidden
+          if (!mainWindow.isVisible()) {
+            mainWindow.show()
+          }
+        }
+      },
+      () => {
+        console.log('[Main] Meeting ended')
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('meeting:ended')
+        }
+      }
+    )
+  }
 }
 
 app.whenReady().then(() => {
@@ -84,6 +107,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   unregisterHotkeys()
+  stopMeetingDetection()
 })
 
 app.on('window-all-closed', () => {
