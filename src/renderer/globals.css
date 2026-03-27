@@ -3,6 +3,20 @@
 html, body, #root {
   width: 100%;
   height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Prevent text selection in the floating bar (it's a tool, not a document) */
+.glass-bar, .solid-panel {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Allow text selection in text inputs and textareas */
+input, textarea, code, pre {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* Onboarded (floating bar) mode: transparent background, no overflow */

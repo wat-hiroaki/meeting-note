@@ -148,26 +148,35 @@ export function useRecording(): UseRecordingReturn {
   }, [])
 
   // Listen for hotkey actions from main process
-  useEffect(() => {
-    const statusRef = { current: status }
-    statusRef.current = status
+  // Use refs to avoid re-registering the listener on every state change
+  const statusRef = useRef(status)
+  statusRef.current = status
+  const startRef = useRef(start)
+  startRef.current = start
+  const pauseRef = useRef(pause)
+  pauseRef.current = pause
+  const resumeRef = useRef(resume)
+  resumeRef.current = resume
+  const stopRef = useRef(stop)
+  stopRef.current = stop
 
+  useEffect(() => {
     const cleanup = window.electronAPI.onHotkeyAction((action: string) => {
       switch (action) {
         case 'record':
-          if (statusRef.current === 'idle' || statusRef.current === 'done') start()
+          if (statusRef.current === 'idle' || statusRef.current === 'done') startRef.current()
           break
         case 'pause':
-          if (statusRef.current === 'recording') pause()
-          else if (statusRef.current === 'paused') resume()
+          if (statusRef.current === 'recording') pauseRef.current()
+          else if (statusRef.current === 'paused') resumeRef.current()
           break
         case 'stop':
-          if (statusRef.current === 'recording' || statusRef.current === 'paused') stop()
+          if (statusRef.current === 'recording' || statusRef.current === 'paused') stopRef.current()
           break
       }
     })
     return cleanup
-  }, [status, start, pause, resume, stop])
+  }, [])
 
   // Cleanup on unmount
   useEffect(() => {

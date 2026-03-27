@@ -1,13 +1,5 @@
-import { execSync } from 'child_process'
+import { spawnSync } from 'child_process'
 import { getConfig } from '../config'
-
-function shellEscape(value: string): string {
-  if (process.platform === 'win32') {
-    // On Windows, use double quotes for arguments containing spaces/special chars
-    return '"' + value.replace(/"/g, '\\"') + '"'
-  }
-  return "'" + value.replace(/'/g, "'\\''") + "'"
-}
 
 export function publishToRemote(localMdPath: string): void {
   const config = getConfig()
@@ -16,18 +8,29 @@ export function publishToRemote(localMdPath: string): void {
     throw new Error('Remote integration not configured')
   }
 
-  const escapedUser = shellEscape(config.remote.user)
-  const escapedHost = shellEscape(config.remote.host)
-  const escapedPath = shellEscape(config.remote.path)
-  const escapedLocalPath = shellEscape(localMdPath)
-  const sshTarget = `${escapedUser}@${escapedHost}`
+  const sshTarget = `${config.remote.user}@${config.remote.host}`
+  const remotePath = config.remote.path
 
-  // Ensure remote directory exists
-  execSync(
-    `ssh ${sshTarget} mkdir -p ${escapedPath}`,
-    { timeout: 10000, windowsHide: true }
-  )
+  // Use spawnSync with explicit args to avoid shell injection (no shell: true)
+  // Step 1: Ensure remote directory exists
+  const mkdirResult = spawnSync('ssh', [sshTarget, `mkdir -p '${remotePath.replace(/'/g, "'\\''")}'`], {
+    timeout: 10000,
+    windowsHide: true
+  })
 
-  // SCP transfer
-  execSync(`scp ${escapedLocalPath} ${sshTarget}:${escapedPath}/`, { timeout: 30000, windowsHide: true })
+  if (mkdirResult.status !== 0) {
+    const stderr = mkdirResult.stderr?.toString() || ''
+    throw new Error(`Failed to create remote directory: ${stderr.slice(0, 200)}`)
+  }
+
+  // Step 2: SCP transfer
+  const scpResult = spawnSync('scp', [localMdPath, `${sshTarget}:${remotePath}/`], {
+    timeout: 30000,
+    windowsHide: true
+  })
+
+  if (scpResult.status !== 0) {
+    const stderr = scpResult.stderr?.toString() || ''
+    throw new Error(`SCP transfer failed: ${stderr.slice(0, 200)}`)
+  }
 }

@@ -33,13 +33,19 @@ export function createTray(mainWindow: BrowserWindow): Tray {
     {
       label: 'Start Recording',
       click: () => {
-        mainWindow.webContents.send('recording:status', 'recording')
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.show()
+          mainWindow.focus()
+          mainWindow.webContents.send('hotkey:action', 'record')
+        }
       }
     },
     {
       label: 'Stop Recording',
       click: () => {
-        mainWindow.webContents.send('recording:status', 'processing')
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('hotkey:action', 'stop')
+        }
       }
     },
     { type: 'separator' },
