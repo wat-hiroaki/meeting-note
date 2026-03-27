@@ -23,7 +23,8 @@ export const ConfigSchema = z.object({
     api: z.object({
       apiKey: z.string().default(''),
       model: z.string().default('whisper-1')
-    }).default({})
+    }).default({}),
+    diarize: z.boolean().default(true)
   }).default({}),
 
   summary: z.object({

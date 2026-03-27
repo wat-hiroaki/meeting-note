@@ -15,12 +15,15 @@ export interface TranscriptSegment {
   start: number
   end: number
   text: string
+  speaker?: string
+  words?: Array<{ word: string; start: number; end: number; probability: number }>
 }
 
 export interface TranscriptResult {
   language: string
   duration: number
   segments: TranscriptSegment[]
+  diarized?: boolean
 }
 
 // Fetch with timeout — AbortController-based
@@ -132,7 +135,8 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
       audioPath,
       '--model', config.transcription.model,
       '--language', config.transcription.language,
-      '--output', 'json'
+      '--output', 'json',
+      '--diarize'  // Always enable speaker diarization (falls back to simple detection)
     ]
 
     const proc = spawn('python', args, {

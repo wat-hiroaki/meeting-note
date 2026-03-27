@@ -5,6 +5,7 @@ import { ControlButton } from './ControlButton'
 import { SettingsPanel } from './SettingsPanel'
 import { ProcessingStatus } from './ProcessingStatus'
 import { MeetingsHistory } from './MeetingsHistory'
+import { AudioWaveform } from './AudioWaveform'
 import { useRecording } from '../hooks/useRecording'
 import { useConfig } from '../hooks/useConfig'
 
@@ -249,6 +250,13 @@ export function FloatingBar(): React.JSX.Element {
 
         {/* Timer — only when active */}
         {isActive && <Timer seconds={seconds} />}
+
+        {/* Waveform — only when recording */}
+        {isActive && (
+          <div className="w-16 no-drag">
+            <AudioWaveform isActive={isActive} isPaused={status === 'paused'} barCount={12} height={20} />
+          </div>
+        )}
 
         {/* Meeting format badge — when idle or active */}
         {!isProcessing && (

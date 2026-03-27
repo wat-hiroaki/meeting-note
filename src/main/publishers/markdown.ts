@@ -82,10 +82,16 @@ function buildMarkdown(data: MeetingData, date: Date): string {
   // Summary
   md += data.summary + '\n\n'
 
-  // Transcript
+  // Transcript with speaker labels
   md += '---\n\n'
   md += '## Transcript\n\n'
+  let lastSpeaker = ''
   for (const seg of data.transcript.segments) {
+    const speaker = (seg as typeof seg & { speaker?: string }).speaker
+    if (speaker && speaker !== lastSpeaker) {
+      md += `\n**${speaker}**\n\n`
+      lastSpeaker = speaker
+    }
     md += `**[${formatTime(seg.start)}]** ${seg.text}\n\n`
   }
 
