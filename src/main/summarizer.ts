@@ -3,6 +3,55 @@ import { getConfig } from './config'
 import type { TranscriptResult } from './transcriber'
 import type { MeetingFormat, ActionItem } from '../shared/types'
 
+const SUMMARY_API_TIMEOUT_MS = 300_000 // 5 minutes for API summarization
+
+// Fetch with timeout — AbortController-based
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal })
+    return response
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`API request timed out after ${Math.round(timeoutMs / 1000)}s`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// Retry with exponential backoff for transient errors
+async function withRetry<T>(fn: () => Promise<T>, retries = 2, baseDelayMs = 2000): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastError = err
+      if (attempt < retries && isTransientError(err)) {
+        const delay = baseDelayMs * Math.pow(2, attempt)
+        console.warn(`[Summarizer] Attempt ${attempt + 1} failed, retrying in ${delay}ms:`, err instanceof Error ? err.message : err)
+        await new Promise(r => setTimeout(r, delay))
+      } else if (!isTransientError(err)) {
+        throw err
+      }
+    }
+  }
+  throw lastError
+}
+
+function isTransientError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase()
+    return msg.includes('timeout') || msg.includes('429') || msg.includes('500') ||
+      msg.includes('502') || msg.includes('503') || msg.includes('econnreset') ||
+      msg.includes('fetch failed') || msg.includes('overloaded')
+  }
+  return false
+}
+
 // Format-specific prompts
 const FORMAT_PROMPTS: Record<MeetingFormat, string> = {
   auto: `以下の会議の文字起こしを分析し、会議の種類を自動判定して最適な形式で要約してください。
@@ -180,9 +229,9 @@ export async function summarize(transcript: TranscriptResult, format?: MeetingFo
 
   let summary: string
   switch (config.summary.mode) {
-    case 'anthropic': summary = await summarizeAnthropic(prompt); break
-    case 'openai': summary = await summarizeOpenAI(prompt); break
-    case 'gemini': summary = await summarizeGemini(prompt); break
+    case 'anthropic': summary = await withRetry(() => summarizeAnthropic(prompt)); break
+    case 'openai': summary = await withRetry(() => summarizeOpenAI(prompt)); break
+    case 'gemini': summary = await withRetry(() => summarizeGemini(prompt)); break
     default: summary = await summarizeCLI(prompt); break
   }
 
@@ -260,6 +309,11 @@ async function summarizeCLI(prompt: string): Promise<string> {
     })
 
     // Send prompt via stdin to avoid argument length limits
+    // Handle stdin errors (e.g. pipe broken if process exits early)
+    proc.stdin.on('error', (err) => {
+      console.warn('[Summarizer] stdin error:', err.message)
+      // Don't reject here — let the close event handle it
+    })
     proc.stdin.write(prompt)
     proc.stdin.end()
 
@@ -306,7 +360,7 @@ async function summarizeAnthropic(prompt: string): Promise<string> {
 
   // Dynamic import to avoid requiring the SDK when using CLI mode
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic({ apiKey })
+  const client = new Anthropic({ apiKey, timeout: SUMMARY_API_TIMEOUT_MS })
 
   const message = await client.messages.create({
     model: config.summary.anthropic.model,
@@ -326,7 +380,7 @@ async function summarizeOpenAI(prompt: string): Promise<string> {
   const { apiKey, model } = config.summary.openai
   if (!apiKey) throw new Error('OpenAI API key is required.')
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -337,10 +391,10 @@ async function summarizeOpenAI(prompt: string): Promise<string> {
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 4096
     })
-  })
+  }, SUMMARY_API_TIMEOUT_MS)
 
   if (!response.ok) {
-    const error = await response.text()
+    const error = await response.text().catch(() => 'Unknown error')
     throw new Error(`OpenAI API error (${response.status}): ${error}`)
   }
 
@@ -353,7 +407,7 @@ async function summarizeGemini(prompt: string): Promise<string> {
   const { apiKey, model } = config.summary.gemini
   if (!apiKey) throw new Error('Google Gemini API key is required.')
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
@@ -361,11 +415,12 @@ async function summarizeGemini(prompt: string): Promise<string> {
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }]
       })
-    }
+    },
+    SUMMARY_API_TIMEOUT_MS
   )
 
   if (!response.ok) {
-    const error = await response.text()
+    const error = await response.text().catch(() => 'Unknown error')
     throw new Error(`Gemini API error (${response.status}): ${error}`)
   }
 

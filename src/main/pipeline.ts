@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron'
+import { existsSync, statSync } from 'fs'
 import { transcribe } from './transcriber'
 import { summarize } from './summarizer'
 import { saveMarkdown } from './publishers/markdown'
@@ -22,13 +23,22 @@ function isWindowAlive(win: BrowserWindow): boolean {
 
 function sendProgress(win: BrowserWindow, step: ProgressStep, percent: number): void {
   if (!isWindowAlive(win)) return
-  win.webContents.send('processing:progress', { step, percent })
+  try {
+    win.webContents.send('processing:progress', { step, percent })
+  } catch {
+    // Window destroyed between check and send — safe to ignore
+  }
 }
 
 function sendError(win: BrowserWindow, message: string): void {
   if (!isWindowAlive(win)) return
-  win.webContents.send('pipeline:error', message)
-  win.webContents.send('recording:status', 'error')
+  try {
+    win.webContents.send('pipeline:error', message)
+    win.webContents.send('recording:status', 'error')
+  } catch {
+    // Window destroyed — log to console as fallback
+    console.error('[Pipeline] Could not send error to window:', message)
+  }
 }
 
 export interface PipelineOptions {
@@ -46,19 +56,49 @@ export async function runPipeline(
 ): Promise<void> {
   const config = getConfig()
 
+  // Pre-flight: validate audio file
+  if (!existsSync(audioPath)) {
+    sendError(win, 'Audio file not found. Recording may have failed to save.')
+    return
+  }
+
+  const audioStats = statSync(audioPath)
+  if (audioStats.size < 100) {
+    sendError(win, `Audio file too small (${audioStats.size} bytes). Recording may have failed or captured only silence.`)
+    return
+  }
+
   try {
     // Step 1: Transcribe
     sendProgress(win, 'transcribing', 10)
     const transcript = await transcribe(audioPath)
     sendProgress(win, 'transcribing', 40)
 
+    // Validate transcript has meaningful content
+    const totalText = transcript.segments.map(s => s.text).join('').trim()
+    if (totalText.length < 10) {
+      console.warn('[Pipeline] Transcript very short:', totalText.length, 'chars')
+      // Still proceed — user may want to see what was captured
+    }
+
     // Step 2: Summarize with meeting format
     sendProgress(win, 'summarizing', 50)
-    const summaryResult = await summarize(
-      transcript,
-      options?.meetingFormat,
-      options?.customInstructions
-    )
+    let summaryResult
+    try {
+      summaryResult = await summarize(
+        transcript,
+        options?.meetingFormat,
+        options?.customInstructions
+      )
+    } catch (summaryErr) {
+      // Summarization failure should not lose the transcript
+      console.error('[Pipeline] Summarization failed, saving transcript only:', summaryErr)
+      summaryResult = {
+        summary: `**Summarization failed:** ${summaryErr instanceof Error ? summaryErr.message : 'Unknown error'}\n\nThe transcript has been saved below.`,
+        actionItems: [],
+        meetingFormat: options?.meetingFormat || config.summary.meetingFormat
+      }
+    }
     sendProgress(win, 'summarizing', 70)
 
     const meetingData: MeetingData = {
@@ -70,27 +110,39 @@ export async function runPipeline(
       calendarEventTitle: options?.calendarEventTitle
     }
 
-    // Step 3: Save markdown
+    // Step 3: Save markdown (critical — must succeed)
     sendProgress(win, 'saving', 75)
-    const mdPath = saveMarkdown(meetingData)
+    let mdPath: string
+    try {
+      mdPath = saveMarkdown(meetingData)
+    } catch (saveErr) {
+      const msg = saveErr instanceof Error ? saveErr.message : 'Unknown error'
+      sendError(win, `Failed to save meeting notes: ${msg}. Check disk space and output directory.`)
+      return
+    }
     sendProgress(win, 'saving', 80)
 
-    // Step 3.5: Save to meetings history
-    const meetingId = generateMeetingId()
-    addMeetingToHistory({
-      id: meetingId,
-      date: startedAt.toISOString(),
-      title: options?.calendarEventTitle || `Meeting ${startedAt.toISOString().split('T')[0]}`,
-      duration: transcript.duration,
-      format: summaryResult.meetingFormat,
-      summaryPath: mdPath,
-      calendarEventId: options?.calendarEventId,
-      calendarEventTitle: options?.calendarEventTitle,
-      actionItems: summaryResult.actionItems,
-      tags: []
-    })
+    // Step 3.5: Save to meetings history (non-critical)
+    try {
+      const meetingId = generateMeetingId()
+      addMeetingToHistory({
+        id: meetingId,
+        date: startedAt.toISOString(),
+        title: options?.calendarEventTitle || `Meeting ${startedAt.toISOString().split('T')[0]}`,
+        duration: transcript.duration,
+        format: summaryResult.meetingFormat,
+        summaryPath: mdPath,
+        calendarEventId: options?.calendarEventId,
+        calendarEventTitle: options?.calendarEventTitle,
+        actionItems: summaryResult.actionItems,
+        tags: []
+      })
+    } catch (historyErr) {
+      console.error('[Pipeline] Failed to save to history:', historyErr)
+      // Non-critical — continue
+    }
 
-    // Step 4: Publish to integrations
+    // Step 4: Publish to integrations (all non-critical)
     sendProgress(win, 'publishing', 85)
     const errors: string[] = []
     let notionPageId: string | undefined
@@ -101,7 +153,7 @@ export async function runPipeline(
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error'
         console.error('[Pipeline] Notion publish failed:', msg)
-        errors.push(`Notion publish failed: ${msg}. Check your API key and database ID in Settings.`)
+        errors.push(`Notion: ${msg}`)
       }
     }
 
@@ -111,7 +163,7 @@ export async function runPipeline(
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error'
         console.error('[Pipeline] Slack publish failed:', msg)
-        errors.push(`Slack publish failed: ${msg}. Check your token and channel in Settings.`)
+        errors.push(`Slack: ${msg}`)
       }
     }
 
@@ -121,19 +173,23 @@ export async function runPipeline(
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error'
         console.error('[Pipeline] Remote publish failed:', msg)
-        errors.push(`Remote SCP failed: ${msg}. Check SSH connection settings.`)
+        errors.push(`Remote SCP: ${msg}`)
       }
     }
 
     sendProgress(win, 'done', 100)
     if (isWindowAlive(win)) {
-      win.webContents.send('pipeline:output', mdPath)
-      win.webContents.send('recording:status', 'done')
+      try {
+        win.webContents.send('pipeline:output', mdPath)
+        win.webContents.send('recording:status', 'done')
+      } catch { /* window destroyed */ }
     }
 
     // Send partial errors as warnings (pipeline still succeeded)
     if (errors.length > 0 && isWindowAlive(win)) {
-      win.webContents.send('pipeline:error', `Publishing warnings: ${errors.join('; ')}`)
+      try {
+        win.webContents.send('pipeline:error', `Publishing warnings: ${errors.join('; ')}`)
+      } catch { /* window destroyed */ }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Pipeline failed'

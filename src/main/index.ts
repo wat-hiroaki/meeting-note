@@ -16,6 +16,12 @@ process.on('uncaughtException', (err) => {
   }
 })
 
+// Catch unhandled promise rejections — log but don't crash
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled promise rejection:', reason)
+  // Don't quit — these are usually non-fatal (failed API calls, etc.)
+})
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {

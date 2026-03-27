@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'child_process'
+import { spawn } from 'child_process'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
@@ -23,12 +23,72 @@ export interface TranscriptResult {
   segments: TranscriptSegment[]
 }
 
+// Fetch with timeout — AbortController-based
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal })
+    return response
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// Retry with exponential backoff for transient errors
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries = 2,
+  baseDelayMs = 2000,
+  retryableCheck?: (err: unknown) => boolean
+): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastError = err
+      if (attempt < retries) {
+        const isRetryable = retryableCheck ? retryableCheck(err) : isTransientError(err)
+        if (!isRetryable) throw err
+
+        const delay = baseDelayMs * Math.pow(2, attempt)
+        console.warn(`[Transcriber] Attempt ${attempt + 1} failed, retrying in ${delay}ms:`, err instanceof Error ? err.message : err)
+        await new Promise(r => setTimeout(r, delay))
+      }
+    }
+  }
+  throw lastError
+}
+
+function isTransientError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase()
+    return msg.includes('timeout') ||
+      msg.includes('429') ||
+      msg.includes('500') ||
+      msg.includes('502') ||
+      msg.includes('503') ||
+      msg.includes('econnreset') ||
+      msg.includes('econnrefused') ||
+      msg.includes('network') ||
+      msg.includes('fetch failed')
+  }
+  return false
+}
+
 export async function transcribe(audioPath: string): Promise<TranscriptResult> {
   const config = getConfig()
 
   switch (config.transcription.mode) {
     case 'api':
-      return transcribeAPI(audioPath)
+      return withRetry(() => transcribeAPI(audioPath))
     case 'remote':
       return transcribeRemote(audioPath)
     default:
@@ -49,10 +109,14 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
     )
   }
 
-  // Check if Python is available
-  try {
-    execSync('python --version', { timeout: 5000, stdio: 'pipe', windowsHide: true })
-  } catch {
+  // Check if Python is available (non-blocking)
+  const pythonOk = await new Promise<boolean>((resolve) => {
+    const proc = spawn('python', ['--version'], { timeout: 5000, stdio: 'pipe', windowsHide: true })
+    proc.on('close', (code) => resolve(code === 0))
+    proc.on('error', () => resolve(false))
+  })
+
+  if (!pythonOk) {
     throw new Error(
       'Python is not installed or not in PATH. ' +
       'Local transcription requires Python + faster-whisper. ' +
@@ -186,42 +250,112 @@ async function transcribeRemote(audioPath: string): Promise<TranscriptResult> {
   const remoteAudioPath = `/tmp/meeting-note-${Date.now()}.wav`
   const sshTarget = `${user}@${host}`
 
-  try {
-    // 1. SCP upload
-    execSync(`scp "${audioPath}" "${sshTarget}:${remoteAudioPath}"`, {
-      timeout: 120000
+  // 1. SCP upload (async, non-blocking)
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('scp', [audioPath, `${sshTarget}:${remoteAudioPath}`], {
+      windowsHide: true
     })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unknown error'
-    throw new Error(`Remote transcription: failed to upload audio file via SCP. Check SSH connection to ${host}. ${msg}`)
-  }
 
-  let output: string
-  try {
-    // 2. SSH execute
+    let settled = false
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        proc.kill('SIGKILL')
+        reject(new Error(`SCP upload to ${host} timed out. Check SSH connection.`))
+      }
+    }, 120_000)
+
+    const stderrChunks: Buffer[] = []
+    proc.stderr?.on('data', (data: Buffer) => stderrChunks.push(data))
+
+    proc.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (code === 0) {
+        resolve()
+      } else {
+        const stderr = Buffer.concat(stderrChunks).toString('utf-8')
+        reject(new Error(`SCP upload failed (code ${code}): ${stderr.slice(-300)}`))
+      }
+    })
+
+    proc.on('error', (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      reject(new Error(`SCP upload failed: ${err.message}`))
+    })
+  })
+
+  // 2. SSH execute (async, non-blocking)
+  const output = await new Promise<string>((resolve, reject) => {
     const cmd = `${pythonPath} ${scriptPath} "${remoteAudioPath}" --model ${config.transcription.model} --language ${config.transcription.language} --output json`
 
-    output = execSync(`ssh "${sshTarget}" "${cmd}"`, {
-      encoding: 'utf-8',
-      timeout: 600000 // 10 min for large files
+    const proc = spawn('ssh', [sshTarget, cmd], {
+      windowsHide: true
     })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unknown error'
-    throw new Error(`Remote transcription: script execution failed on ${host}. Check that Python and the transcription script are available. ${msg}`)
-  }
 
-  // 3. Cleanup remote file
-  try {
-    execSync(`ssh "${sshTarget}" "rm -f ${remoteAudioPath}"`, { timeout: 10000 })
-  } catch { /* ignore cleanup errors */ }
+    let settled = false
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        proc.kill('SIGKILL')
+        reject(new Error('Remote transcription timed out after 10 minutes.'))
+      }
+    }, 600_000)
+
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
+
+    proc.stdout?.on('data', (data: Buffer) => stdoutChunks.push(data))
+    proc.stderr?.on('data', (data: Buffer) => stderrChunks.push(data))
+
+    proc.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (code === 0) {
+        resolve(Buffer.concat(stdoutChunks).toString('utf-8'))
+      } else {
+        const stderr = Buffer.concat(stderrChunks).toString('utf-8')
+        reject(new Error(`Remote transcription failed (code ${code}): ${stderr.slice(-300)}`))
+      }
+    })
+
+    proc.on('error', (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      reject(new Error(`SSH execution failed: ${err.message}`))
+    })
+  })
+
+  // 3. Cleanup remote file (fire-and-forget)
+  const cleanupProc = spawn('ssh', [sshTarget, `rm -f ${remoteAudioPath}`], { windowsHide: true })
+  cleanupProc.on('error', () => { /* ignore cleanup errors */ })
 
   // 4. Parse result
-  const result = JSON.parse(output) as TranscriptResult | { error: string }
-  if ('error' in result) {
-    throw new Error(`Remote transcription: ${result.error}`)
+  const trimmed = output.trim()
+  let jsonStr = trimmed
+  if (trimmed && !trimmed.startsWith('{')) {
+    const lines = trimmed.split('\n')
+    const jsonLine = lines.findLast(l => l.trim().startsWith('{'))
+    if (jsonLine) jsonStr = jsonLine.trim()
   }
 
-  return result as TranscriptResult
+  try {
+    const result = JSON.parse(jsonStr) as TranscriptResult | { error: string }
+    if ('error' in result) {
+      throw new Error(`Remote transcription: ${result.error}`)
+    }
+    return result as TranscriptResult
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error(`Remote transcription returned invalid JSON: ${trimmed.slice(0, 200)}`)
+    }
+    throw err
+  }
 }
 
 async function transcribeAPI(audioPath: string): Promise<TranscriptResult> {
@@ -233,9 +367,24 @@ async function transcribeAPI(audioPath: string): Promise<TranscriptResult> {
   }
 
   const fs = await import('fs')
-  const formData = new FormData()
+
+  // Validate file before uploading
+  if (!existsSync(audioPath)) {
+    throw new Error(`Audio file not found: ${audioPath}`)
+  }
 
   const fileBuffer = fs.readFileSync(audioPath)
+  if (fileBuffer.length === 0) {
+    throw new Error('Audio file is empty. Recording may have failed.')
+  }
+
+  // Whisper API has a 25MB limit
+  const fileSizeMB = fileBuffer.length / (1024 * 1024)
+  if (fileSizeMB > 25) {
+    throw new Error(`Audio file is ${fileSizeMB.toFixed(1)}MB — exceeds Whisper API's 25MB limit. Use local transcription for large files.`)
+  }
+
+  const formData = new FormData()
   const blob = new Blob([fileBuffer], { type: 'audio/wav' })
   formData.append('file', blob, 'recording.wav')
   formData.append('model', model)
@@ -246,17 +395,29 @@ async function transcribeAPI(audioPath: string): Promise<TranscriptResult> {
     formData.append('language', config.transcription.language)
   }
 
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`
+  const API_TIMEOUT_MS = 300_000 // 5 minutes for API transcription
+
+  const response = await fetchWithTimeout(
+    'https://api.openai.com/v1/audio/transcriptions',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: formData
     },
-    body: formData
-  })
+    API_TIMEOUT_MS
+  )
 
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`OpenAI Whisper API: request failed (${response.status}): ${error}`)
+    const errorText = await response.text().catch(() => 'Unknown error')
+    if (response.status === 429) {
+      throw new Error(`OpenAI API rate limited (429). Please wait and try again. ${errorText}`)
+    }
+    if (response.status >= 500) {
+      throw new Error(`OpenAI API server error (${response.status}). ${errorText}`)
+    }
+    throw new Error(`OpenAI Whisper API failed (${response.status}): ${errorText}`)
   }
 
   const data = await response.json() as {

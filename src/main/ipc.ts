@@ -54,21 +54,53 @@ export function registerIpcHandlers(): void {
 
   // Save webm audio buffer from renderer
   ipcMain.handle('recording:saveAudio', async (event, buffer: ArrayBuffer, metadata: { duration: number }) => {
-    const webmPath = saveAudioBuffer(Buffer.from(buffer))
-    console.log('[IPC] Audio saved:', webmPath, 'duration:', metadata.duration)
-
-    // Convert to WAV for Whisper
-    const wavPath = await convertWebmToWav(webmPath)
-    currentAudioPath = wavPath
-    console.log('[IPC] Converted to WAV:', wavPath)
-
-    // Run pipeline with meeting format options
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && wavPath) {
+
+    const sendErr = (msg: string): void => {
+      if (win && !win.isDestroyed()) {
+        try {
+          win.webContents.send('pipeline:error', msg)
+          win.webContents.send('recording:status', 'error')
+        } catch { /* window destroyed */ }
+      }
+    }
+
+    // Validate buffer
+    if (!buffer || buffer.byteLength === 0) {
+      const msg = 'No audio data received. Recording may have failed.'
+      console.error('[IPC]', msg)
+      sendErr(msg)
+      return ''
+    }
+
+    let webmPath: string
+    try {
+      webmPath = saveAudioBuffer(Buffer.from(buffer))
+      console.log('[IPC] Audio saved:', webmPath, 'duration:', metadata.duration)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save audio'
+      console.error('[IPC] Save audio failed:', msg)
+      sendErr(msg)
+      return ''
+    }
+
+    let wavPath: string
+    try {
+      wavPath = await convertWebmToWav(webmPath)
+      currentAudioPath = wavPath
+      console.log('[IPC] Converted to WAV:', wavPath)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to convert audio'
+      console.error('[IPC] WAV conversion failed:', msg)
+      sendErr(msg)
+      return ''
+    }
+
+    // Run pipeline with meeting format options (async, don't await)
+    if (win && !win.isDestroyed()) {
       runPipeline(wavPath, win, recordingStartedAt, currentPipelineOptions).catch((err) => {
         console.error('[IPC] Pipeline error:', err)
-        win.webContents.send('pipeline:error', err instanceof Error ? err.message : 'Pipeline failed')
-        win.webContents.send('recording:status', 'error')
+        sendErr(err instanceof Error ? err.message : 'Pipeline failed')
       })
     }
 

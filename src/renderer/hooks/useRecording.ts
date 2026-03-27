@@ -93,7 +93,11 @@ export function useRecording(): UseRecordingReturn {
 
       // Send buffer to main process for saving + conversion + pipeline
       try {
-        await window.electronAPI.saveAudio(buffer, { duration: seconds })
+        const result = await window.electronAPI.saveAudio(buffer, { duration: seconds })
+        if (!result) {
+          // saveAudio returned empty — error was already sent via IPC events
+          // Status will be updated by the onPipelineError listener
+        }
       } catch (err: unknown) {
         setStatus('error')
         setError(err instanceof Error ? err.message : 'Failed to save recording')
