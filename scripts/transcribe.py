@@ -95,15 +95,28 @@ def check_diarization_available() -> dict:
 
 
 def diarize_with_pyannote(audio_path: str, hf_token: str = None, num_speakers: int = None):
-    """Run speaker diarization using pyannote.audio pipeline."""
+    """Run speaker diarization using pyannote.audio pipeline.
+
+    Tries community-1 model first (best accuracy, pyannote 4.0+),
+    falls back to 3.1 for older installations.
+    """
     from pyannote.audio import Pipeline
     import torch
 
-    # Use the pre-trained pipeline
-    pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1",
-        use_auth_token=hf_token
-    )
+    # Try community-1 (best accuracy, ~11-15% DER) then fall back to 3.1
+    model_id = None
+    for candidate in ["pyannote/speaker-diarization-community-1", "pyannote/speaker-diarization-3.1"]:
+        try:
+            pipeline = Pipeline.from_pretrained(candidate, use_auth_token=hf_token)
+            model_id = candidate
+            break
+        except Exception:
+            continue
+
+    if model_id is None:
+        raise RuntimeError("Could not load any pyannote diarization model. Check HF token and model access.")
+
+    sys.stderr.write(f"Using diarization model: {model_id}\n")
 
     # Use GPU if available
     if torch.cuda.is_available():
