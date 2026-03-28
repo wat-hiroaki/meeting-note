@@ -1,12 +1,36 @@
 import { spawn, execSync } from 'child_process'
 import { join } from 'path'
 import { app } from 'electron'
-import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'fs'
 
 function getTempDir(): string {
   const dir = join(app.getPath('temp'), 'meeting-note')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return dir
+}
+
+/**
+ * Clean up stale temp files from previous sessions (older than 24 hours).
+ * Called at app startup to prevent unbounded disk usage.
+ */
+export function cleanupStaleTempFiles(): void {
+  try {
+    const dir = getTempDir()
+    const entries = readdirSync(dir)
+    const now = Date.now()
+    const MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry)
+      try {
+        const stats = statSync(fullPath)
+        if (now - stats.mtimeMs > MAX_AGE_MS) {
+          unlinkSync(fullPath)
+          console.log('[Recorder] Cleaned up stale temp file:', entry)
+        }
+      } catch { /* ignore individual file errors */ }
+    }
+  } catch { /* ignore if temp dir doesn't exist yet */ }
 }
 
 // Resolve ffmpeg binary — check PATH first, then known install locations
@@ -58,20 +82,48 @@ export function getFfmpegPath(): string {
 
 /**
  * Save a webm audio buffer from the renderer to a temp file.
+ * Validates the buffer has meaningful data before saving.
  */
 export function saveAudioBuffer(buffer: Buffer): string {
+  if (!buffer || buffer.length === 0) {
+    throw new Error('Empty audio buffer — no audio data was recorded.')
+  }
+
+  // Minimum viable WebM file is ~100 bytes (header only)
+  if (buffer.length < 100) {
+    throw new Error(`Audio buffer too small (${buffer.length} bytes) — recording may have failed.`)
+  }
+
   const tempDir = getTempDir()
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   const filePath = join(tempDir, `recording_${timestamp}.webm`)
-  writeFileSync(filePath, buffer)
+
+  try {
+    writeFileSync(filePath, buffer)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error'
+    throw new Error(`Failed to save audio file: ${msg}. Check disk space.`)
+  }
+
   console.log('[Recorder] Saved webm:', filePath, 'size:', buffer.length)
   return filePath
 }
 
 /**
  * Convert a webm file to 16kHz mono WAV (for Whisper compatibility).
+ * Validates both input and output files.
  */
 export async function convertWebmToWav(webmPath: string): Promise<string> {
+  // Validate input file
+  if (!existsSync(webmPath)) {
+    throw new Error(`Input audio file not found: ${webmPath}`)
+  }
+
+  const inputStats = statSync(webmPath)
+  if (inputStats.size === 0) {
+    throw new Error('Input audio file is empty (0 bytes). Recording may have failed.')
+  }
+
   const wavPath = webmPath.replace(/\.webm$/, '.wav')
   const bin = getFfmpegPath()
 
@@ -94,7 +146,7 @@ export async function convertWebmToWav(webmPath: string): Promise<string> {
         settled = true
         proc.kill('SIGKILL')
         console.error('[Recorder] FFmpeg timed out after', FFMPEG_TIMEOUT_MS, 'ms')
-        reject(new Error('FFmpeg conversion timed out. The recording may be corrupt.'))
+        reject(new Error('FFmpeg conversion timed out. The recording may be too large or corrupt.'))
       }
     }, FFMPEG_TIMEOUT_MS)
 
@@ -106,21 +158,48 @@ export async function convertWebmToWav(webmPath: string): Promise<string> {
       if (settled) return
       settled = true
       clearTimeout(timeout)
-      if (code === 0 && existsSync(wavPath)) {
-        console.log('[Recorder] Converted to WAV:', wavPath)
-        resolve(wavPath)
-      } else {
+
+      if (code !== 0) {
         console.error('[Recorder] FFmpeg conversion failed (code', code, '):', stderr.slice(-500))
-        reject(new Error(`FFmpeg conversion failed with code ${code}`))
+        reject(new Error(`FFmpeg conversion failed (code ${code}). Audio may be corrupt.`))
+        return
       }
+
+      // Validate output file
+      if (!existsSync(wavPath)) {
+        reject(new Error('FFmpeg produced no output file. Conversion failed.'))
+        return
+      }
+
+      const outputStats = statSync(wavPath)
+      if (outputStats.size < 44) {
+        // WAV header alone is 44 bytes — anything less is invalid
+        reject(new Error('FFmpeg produced an empty WAV file. The input audio may be corrupt or silent.'))
+        return
+      }
+
+      console.log('[Recorder] Converted to WAV:', wavPath, 'size:', outputStats.size)
+
+      // Clean up the source webm file after successful conversion
+      try { unlinkSync(webmPath) } catch { /* ignore cleanup errors */ }
+
+      resolve(wavPath)
     })
 
     proc.on('error', (err) => {
       if (settled) return
       settled = true
       clearTimeout(timeout)
-      console.error('[Recorder] FFmpeg spawn error:', err.message)
-      reject(err)
+
+      if (err.message.includes('ENOENT')) {
+        reject(new Error(
+          'FFmpeg not found. Install FFmpeg to process recordings.\n' +
+          (process.platform === 'darwin' ? 'Run: brew install ffmpeg' : 'Run: winget install Gyan.FFmpeg')
+        ))
+      } else {
+        console.error('[Recorder] FFmpeg spawn error:', err.message)
+        reject(new Error(`FFmpeg error: ${err.message}`))
+      }
     })
   })
 }

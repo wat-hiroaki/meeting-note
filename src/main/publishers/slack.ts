@@ -15,15 +15,22 @@ export async function publishToSlack(data: MeetingData, notionPageId?: string): 
   const timeStr = `${data.startedAt.getHours().toString().padStart(2, '0')}:${data.startedAt.getMinutes().toString().padStart(2, '0')}`
   const durationMin = Math.ceil(data.transcript.duration / 60)
 
-  // Extract first 3 lines of summary for preview
-  const summaryPreview = data.summary.split('\n').filter(l => l.trim()).slice(0, 5).join('\n')
+  // Extract first lines of summary for preview (Slack section text limit is 3000 chars)
+  const MAX_SLACK_TEXT = 2900
+  let summaryPreview = data.summary.split('\n').filter(l => l.trim()).slice(0, 5).join('\n')
+  if (summaryPreview.length > MAX_SLACK_TEXT) {
+    summaryPreview = summaryPreview.slice(0, MAX_SLACK_TEXT) + '\n...'
+  }
+
+  // Slack header blocks have a 150-character limit
+  const headerText = `Meeting Notes — ${dateStr} ${timeStr}`.slice(0, 150)
 
   const blocks = [
     {
       type: 'header',
       text: {
         type: 'plain_text',
-        text: `Meeting Notes — ${dateStr} ${timeStr}`
+        text: headerText
       }
     },
     {

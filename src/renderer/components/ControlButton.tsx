@@ -24,7 +24,7 @@ export function ControlButton({
       onClick={onClick}
       title={title}
       disabled={disabled}
-      className={`no-drag w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150 ${variantStyles[variant]} disabled:opacity-30 disabled:cursor-not-allowed`}
+      className={`no-drag w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150 ${variantStyles[variant]} disabled:opacity-30 disabled:cursor-not-allowed outline-none focus-visible:ring-1 focus-visible:ring-white/30`}
     >
       {children}
     </button>

@@ -4,8 +4,21 @@ import { Timer } from './Timer'
 import { ControlButton } from './ControlButton'
 import { SettingsPanel } from './SettingsPanel'
 import { ProcessingStatus } from './ProcessingStatus'
+import { MeetingsHistory } from './MeetingsHistory'
+import { AudioWaveform } from './AudioWaveform'
 import { useRecording } from '../hooks/useRecording'
 import { useConfig } from '../hooks/useConfig'
+
+type MeetingFormat = 'auto' | 'sales' | 'standup' | 'team' | 'one_on_one' | 'brainstorm'
+
+const FORMAT_OPTIONS: { value: MeetingFormat; label: string; short: string }[] = [
+  { value: 'auto', label: 'Auto', short: 'Auto' },
+  { value: 'sales', label: 'Sales Call', short: 'Sales' },
+  { value: 'standup', label: 'Stand-up', short: 'Standup' },
+  { value: 'team', label: 'Team Meeting', short: 'Team' },
+  { value: 'one_on_one', label: '1on1', short: '1on1' },
+  { value: 'brainstorm', label: 'Brainstorm', short: 'Brain' }
+]
 
 // SVG icons as inline components
 function RecordIcon(): React.JSX.Element {
@@ -50,6 +63,15 @@ function SettingsIcon(): React.JSX.Element {
   )
 }
 
+function HistoryIcon(): React.JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="7" cy="7" r="5.5" />
+      <path d="M7 4v3.5l2.5 1.5" />
+    </svg>
+  )
+}
+
 function MinimizeIcon(): React.JSX.Element {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -71,8 +93,13 @@ export function FloatingBar(): React.JSX.Element {
   const { status, seconds, error, outputPath, start, pause, resume, stop, dismiss } = useRecording()
   const { config } = useConfig()
   const [showSettings, setShowSettings] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [showFormatPicker, setShowFormatPicker] = useState(false)
+  const [meetingFormat, setMeetingFormat] = useState<MeetingFormat>('auto')
   const [setupWarning, setSetupWarning] = useState<string | null>(null)
   const [depsReady, setDepsReady] = useState<boolean | null>(null)
+  const [meetingDetected, setMeetingDetected] = useState<{ platform: string } | null>(null)
+  const [consentShown, setConsentShown] = useState(false)
 
   // Check if transcription & summary deps are configured
   useEffect(() => {
@@ -114,6 +141,41 @@ export function FloatingBar(): React.JSX.Element {
     checkDeps()
   }, [config])
 
+  // Listen for meeting detection events
+  useEffect(() => {
+    const cleanupDetected = window.electronAPI.onMeetingDetected((meeting) => {
+      setMeetingDetected(meeting)
+    })
+    const cleanupEnded = window.electronAPI.onMeetingEnded(() => {
+      setMeetingDetected(null)
+    })
+    return () => {
+      cleanupDetected()
+      cleanupEnded()
+    }
+  }, [])
+
+  // Close panels on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        if (showSettings) setShowSettings(false)
+        else if (showHistory) setShowHistory(false)
+        else if (showFormatPicker) setShowFormatPicker(false)
+        else if (consentShown) setConsentShown(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showSettings, showHistory, showFormatPicker, consentShown])
+
+  // Sync meeting format from config
+  useEffect(() => {
+    if (config.summary?.meetingFormat) {
+      setMeetingFormat(config.summary.meetingFormat as MeetingFormat)
+    }
+  }, [config.summary?.meetingFormat])
+
   const handlePrimaryAction = useCallback((): void => {
     // Block recording if deps not ready
     if ((status === 'idle' || status === 'done' || status === 'error') && depsReady === false) {
@@ -125,9 +187,18 @@ export function FloatingBar(): React.JSX.Element {
       case 'idle':
       case 'done':
       case 'error':
+        // Show consent notification if enabled and not yet shown
+        if (config.consent?.enabled && !consentShown) {
+          setConsentShown(true)
+          // Consent will be shown in expanded panel, recording starts after acknowledgment
+          return
+        }
         start({
-          micDevice: config.recording.micDevice
+          micDevice: config.recording.micDevice,
+          meetingFormat,
         })
+        setConsentShown(false)
+        setMeetingDetected(null)
         break
       case 'recording':
         pause()
@@ -136,7 +207,20 @@ export function FloatingBar(): React.JSX.Element {
         resume()
         break
     }
-  }, [status, start, pause, resume, depsReady])
+  }, [status, start, pause, resume, depsReady, meetingFormat, config.consent?.enabled, config.recording.micDevice, consentShown])
+
+  const handleConsentAccept = useCallback((): void => {
+    start({
+      micDevice: config.recording.micDevice,
+      meetingFormat,
+    })
+    setConsentShown(false)
+    setMeetingDetected(null)
+  }, [start, config.recording.micDevice, meetingFormat])
+
+  const handleConsentDismiss = useCallback((): void => {
+    setConsentShown(false)
+  }, [])
 
   const handleMinimize = useCallback((): void => {
     window.electronAPI.minimizeWindow()
@@ -148,23 +232,29 @@ export function FloatingBar(): React.JSX.Element {
 
   // Determine window mode
   const showExpandedPanel = status === 'processing' || status === 'done' || status === 'error'
-  const showWarningBar = setupWarning !== null && !showSettings && !showExpandedPanel && status === 'idle'
+  const showConsentPanel = consentShown && !showSettings && !showHistory
+  const showMeetingAlert = meetingDetected && status === 'idle' && !showSettings && !showHistory && !showExpandedPanel && !consentShown
+  const showWarningBar = setupWarning !== null && !showSettings && !showHistory && !showExpandedPanel && !showConsentPanel && !showMeetingAlert && status === 'idle'
+  const showFormatBar = showFormatPicker && !showSettings && !showHistory && !showExpandedPanel && !showConsentPanel && status === 'idle'
 
   useEffect(() => {
     if (showSettings) {
       window.electronAPI.setWindowMode('settings')
-    } else if (showExpandedPanel || showWarningBar) {
+    } else if (showHistory) {
+      window.electronAPI.setWindowMode('history')
+    } else if (showExpandedPanel || showWarningBar || showConsentPanel || showMeetingAlert || showFormatBar) {
       window.electronAPI.setWindowMode('expanded')
     } else {
       window.electronAPI.setWindowMode('bar')
     }
-  }, [showSettings, showExpandedPanel, showWarningBar])
+  }, [showSettings, showHistory, showExpandedPanel, showWarningBar, showConsentPanel, showMeetingAlert, showFormatBar])
 
   const canStop = status === 'recording' || status === 'paused'
   const isProcessing = status === 'processing'
   const isActive = status === 'recording' || status === 'paused'
 
   const primaryLabel = status === 'recording' ? 'Pause' : status === 'paused' ? 'Resume' : 'Record'
+  const selectedFormat = FORMAT_OPTIONS.find(f => f.value === meetingFormat)
 
   return (
     <div className="w-full p-1">
@@ -174,6 +264,27 @@ export function FloatingBar(): React.JSX.Element {
 
         {/* Timer — only when active */}
         {isActive && <Timer seconds={seconds} />}
+
+        {/* Waveform — only when recording */}
+        {isActive && (
+          <div className="w-16 no-drag">
+            <AudioWaveform isActive={isActive} isPaused={status === 'paused'} barCount={12} height={20} />
+          </div>
+        )}
+
+        {/* Meeting format badge — when idle or active */}
+        {!isProcessing && (
+          <button
+            onClick={() => !isActive && setShowFormatPicker(!showFormatPicker)}
+            className={`no-drag px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+              isActive ? 'bg-white/5 text-white/30 cursor-default' : 'bg-white/5 hover:bg-white/10 text-white/50 hover:text-white/70 cursor-pointer'
+            }`}
+            disabled={isActive}
+            title="Meeting format"
+          >
+            {selectedFormat?.short || 'Auto'}
+          </button>
+        )}
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -201,9 +312,18 @@ export function FloatingBar(): React.JSX.Element {
         {/* Divider */}
         <div className="w-px h-4 bg-white/10" />
 
+        {/* History */}
+        <ControlButton
+          onClick={() => { setShowHistory(!showHistory); setShowSettings(false); setShowFormatPicker(false) }}
+          title="Meetings"
+          disabled={isProcessing}
+        >
+          <HistoryIcon />
+        </ControlButton>
+
         {/* Settings */}
         <ControlButton
-          onClick={() => setShowSettings(!showSettings)}
+          onClick={() => { setShowSettings(!showSettings); setShowHistory(false); setShowFormatPicker(false) }}
           title="Settings"
           disabled={isProcessing}
         >
@@ -224,6 +344,75 @@ export function FloatingBar(): React.JSX.Element {
         </div>
       </div>
 
+      {/* Meeting format picker */}
+      {showFormatBar && (
+        <div className="solid-panel rounded-2xl px-3 py-2.5 mt-1 no-drag">
+          <div className="text-white/30 text-[9px] uppercase tracking-wider mb-2">Meeting Format</div>
+          <div className="grid grid-cols-3 gap-1">
+            {FORMAT_OPTIONS.map(f => (
+              <button
+                key={f.value}
+                onClick={() => { setMeetingFormat(f.value); setShowFormatPicker(false) }}
+                className={`px-2 py-1.5 rounded-lg text-[11px] transition-all ${
+                  meetingFormat === f.value
+                    ? 'bg-blue-500/15 border border-blue-500/30 text-blue-300'
+                    : 'bg-white/[0.03] border border-transparent hover:bg-white/[0.06] text-white/60'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Meeting detected alert */}
+      {showMeetingAlert && (
+        <div className="solid-panel rounded-2xl px-4 py-3 mt-1 no-drag">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-blue-400 text-xs shrink-0">&#9679;</span>
+            <span className="text-white/70 text-xs">
+              {meetingDetected.platform === 'zoom' ? 'Zoom' :
+               meetingDetected.platform === 'google_meet' ? 'Google Meet' :
+               meetingDetected.platform === 'teams' ? 'Teams' : 'Meeting'} detected
+            </span>
+          </div>
+          <button
+            onClick={handlePrimaryAction}
+            className="w-full py-1.5 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 text-xs font-medium transition-colors border border-blue-500/20"
+          >
+            Start Recording
+          </button>
+        </div>
+      )}
+
+      {/* Consent notification */}
+      {showConsentPanel && (
+        <div className="solid-panel rounded-2xl px-4 py-3 mt-1 no-drag space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-yellow-400 text-xs shrink-0">&#9888;</span>
+            <span className="text-white/70 text-xs font-medium">Recording Consent</span>
+          </div>
+          <p className="text-white/50 text-[11px] leading-relaxed">
+            {config.consent?.message || 'This meeting is being recorded and transcribed by AI.'}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleConsentDismiss}
+              className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 text-xs transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConsentAccept}
+              className="flex-1 py-1.5 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 text-xs font-medium transition-colors border border-blue-500/20"
+            >
+              Start Recording
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Setup warning */}
       {showWarningBar && (
         <div
@@ -238,12 +427,15 @@ export function FloatingBar(): React.JSX.Element {
       )}
 
       {/* Processing / Done / Error panel */}
-      {showExpandedPanel && !showSettings && (
+      {showExpandedPanel && !showSettings && !showHistory && (
         <ProcessingStatus outputPath={outputPath} error={error} onDismiss={dismiss} />
       )}
 
       {/* Settings Panel */}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
+      {/* Meetings History */}
+      {showHistory && <MeetingsHistory onClose={() => setShowHistory(false)} />}
     </div>
   )
 }

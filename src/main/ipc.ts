@@ -4,9 +4,15 @@ import { saveAudioBuffer, convertWebmToWav } from './recorder'
 import { getConfig, saveConfig } from './config'
 import { ConfigSchema } from '../shared/types'
 import { runPipeline } from './pipeline'
+import type { PipelineOptions } from './pipeline'
+import { getMeetingsHistory, getMeetingById, updateMeetingActionItem, searchMeetings } from './meetings-history'
+import { fetchUpcomingEvents, getNextMeeting } from './calendar'
+import { detectActiveMeeting } from './meeting-detector'
+import type { MeetingFormat, ActionItem } from '../shared/types'
 
 let currentAudioPath = ''
 let recordingStartedAt: Date = new Date()
+let currentPipelineOptions: PipelineOptions = {}
 
 export function registerIpcHandlers(): void {
   // Window controls
@@ -19,9 +25,14 @@ export function registerIpcHandlers(): void {
   })
 
   // Recording — Web Audio API based (renderer captures audio, main saves/converts)
-  ipcMain.handle('recording:start', () => {
+  ipcMain.handle('recording:start', (_event, options?: { meetingFormat?: MeetingFormat; calendarEventTitle?: string; calendarEventId?: string }) => {
     recordingStartedAt = new Date()
-    console.log('[IPC] Recording started (Web Audio mode)')
+    currentPipelineOptions = {
+      meetingFormat: options?.meetingFormat,
+      calendarEventTitle: options?.calendarEventTitle,
+      calendarEventId: options?.calendarEventId
+    }
+    console.log('[IPC] Recording started (Web Audio mode), format:', options?.meetingFormat || 'auto')
   })
 
   ipcMain.handle('recording:pause', () => {
@@ -43,21 +54,53 @@ export function registerIpcHandlers(): void {
 
   // Save webm audio buffer from renderer
   ipcMain.handle('recording:saveAudio', async (event, buffer: ArrayBuffer, metadata: { duration: number }) => {
-    const webmPath = saveAudioBuffer(Buffer.from(buffer))
-    console.log('[IPC] Audio saved:', webmPath, 'duration:', metadata.duration)
-
-    // Convert to WAV for Whisper
-    const wavPath = await convertWebmToWav(webmPath)
-    currentAudioPath = wavPath
-    console.log('[IPC] Converted to WAV:', wavPath)
-
-    // Run pipeline
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && wavPath) {
-      runPipeline(wavPath, win, recordingStartedAt).catch((err) => {
+
+    const sendErr = (msg: string): void => {
+      if (win && !win.isDestroyed()) {
+        try {
+          win.webContents.send('pipeline:error', msg)
+          win.webContents.send('recording:status', 'error')
+        } catch { /* window destroyed */ }
+      }
+    }
+
+    // Validate buffer
+    if (!buffer || buffer.byteLength === 0) {
+      const msg = 'No audio data received. Recording may have failed.'
+      console.error('[IPC]', msg)
+      sendErr(msg)
+      return ''
+    }
+
+    let webmPath: string
+    try {
+      webmPath = saveAudioBuffer(Buffer.from(buffer))
+      console.log('[IPC] Audio saved:', webmPath, 'duration:', metadata.duration)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save audio'
+      console.error('[IPC] Save audio failed:', msg)
+      sendErr(msg)
+      return ''
+    }
+
+    let wavPath: string
+    try {
+      wavPath = await convertWebmToWav(webmPath)
+      currentAudioPath = wavPath
+      console.log('[IPC] Converted to WAV:', wavPath)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to convert audio'
+      console.error('[IPC] WAV conversion failed:', msg)
+      sendErr(msg)
+      return ''
+    }
+
+    // Run pipeline with meeting format options (async, don't await)
+    if (win && !win.isDestroyed()) {
+      runPipeline(wavPath, win, recordingStartedAt, currentPipelineOptions).catch((err) => {
         console.error('[IPC] Pipeline error:', err)
-        win.webContents.send('pipeline:error', err instanceof Error ? err.message : 'Pipeline failed')
-        win.webContents.send('recording:status', 'error')
+        sendErr(err instanceof Error ? err.message : 'Pipeline failed')
       })
     }
 
@@ -95,6 +138,9 @@ export function registerIpcHandlers(): void {
     const result = ConfigSchema.safeParse(merged)
     if (result.success) {
       saveConfig(result.data)
+    } else {
+      console.error('[IPC] Config validation failed:', result.error.issues)
+      throw new Error(`Invalid config: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
     }
   })
 
@@ -219,6 +265,37 @@ export function registerIpcHandlers(): void {
     })
   })
 
+  // ===== Meetings History =====
+  ipcMain.handle('meetings:getHistory', (_event, limit?: number, offset?: number) => {
+    return getMeetingsHistory(limit || 50, offset || 0)
+  })
+
+  ipcMain.handle('meetings:getById', (_event, id: string) => {
+    return getMeetingById(id)
+  })
+
+  ipcMain.handle('meetings:search', (_event, query: string) => {
+    return searchMeetings(query)
+  })
+
+  ipcMain.handle('meetings:updateActionItem', (_event, meetingId: string, actionIndex: number, updates: Partial<ActionItem>) => {
+    return updateMeetingActionItem(meetingId, actionIndex, updates)
+  })
+
+  // ===== Calendar =====
+  ipcMain.handle('calendar:getEvents', async () => {
+    return await fetchUpcomingEvents()
+  })
+
+  ipcMain.handle('calendar:getNextMeeting', async () => {
+    return await getNextMeeting()
+  })
+
+  // ===== Meeting Detection =====
+  ipcMain.handle('meeting:detect', () => {
+    return detectActiveMeeting()
+  })
+
   // Window mode switching
   ipcMain.handle('window:setMode', (event, mode: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -234,6 +311,10 @@ export function registerIpcHandlers(): void {
         break
       case 'settings':
         win.setSize(380, 580)
+        win.setPosition(currentX, currentY)
+        break
+      case 'history':
+        win.setSize(420, 600)
         win.setPosition(currentX, currentY)
         break
       case 'expanded':

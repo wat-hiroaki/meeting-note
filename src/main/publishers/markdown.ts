@@ -2,11 +2,15 @@ import { join, resolve } from 'path'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { getConfig } from '../config'
 import type { TranscriptResult } from '../transcriber'
+import type { MeetingFormat, ActionItem } from '../../shared/types'
 
 export interface MeetingData {
   transcript: TranscriptResult
   summary: string
   startedAt: Date
+  meetingFormat: MeetingFormat
+  actionItems: ActionItem[]
+  calendarEventTitle?: string
 }
 
 export function saveMarkdown(data: MeetingData): string {
@@ -31,12 +35,27 @@ function formatFilename(date: Date, format: string): string {
   const h = date.getHours().toString().padStart(2, '0')
   const mi = date.getMinutes().toString().padStart(2, '0')
 
-  return format
+  let filename = format
     .replace('YYYY', y.toString())
     .replace('MM', mo)
     .replace('DD', d)
     .replace('HH', h)
     .replace('mm', mi)
+
+  // Remove characters that are invalid in filenames across platforms
+  // eslint-disable-next-line no-control-regex
+  filename = filename.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+
+  return filename
+}
+
+const FORMAT_LABELS: Record<MeetingFormat, string> = {
+  auto: 'Auto',
+  sales: 'Sales Call',
+  standup: 'Stand-up',
+  team: 'Team Meeting',
+  one_on_one: '1on1',
+  brainstorm: 'Brainstorm'
 }
 
 function buildMarkdown(data: MeetingData, date: Date): string {
@@ -52,15 +71,35 @@ function buildMarkdown(data: MeetingData, date: Date): string {
   md += `time: ${timeStr}\n`
   md += `duration: ${durationMin}min\n`
   md += `language: ${data.transcript.language}\n`
+  md += `format: ${data.meetingFormat}\n`
+  if (data.calendarEventTitle) {
+    // Escape quotes and newlines in YAML string value
+    const safeTitle = data.calendarEventTitle.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')
+    md += `meeting: "${safeTitle}"\n`
+  }
+  if (data.actionItems.length > 0) {
+    md += `action_items: ${data.actionItems.length}\n`
+  }
   md += '---\n\n'
+
+  // Title
+  const title = data.calendarEventTitle || `Meeting ${dateStr} ${timeStr}`
+  md += `# ${title}\n\n`
+  md += `> ${FORMAT_LABELS[data.meetingFormat]} | ${durationMin}min | ${dateStr} ${timeStr}\n\n`
 
   // Summary
   md += data.summary + '\n\n'
 
-  // Transcript
+  // Transcript with speaker labels
   md += '---\n\n'
   md += '## Transcript\n\n'
+  let lastSpeaker = ''
   for (const seg of data.transcript.segments) {
+    const speaker = (seg as typeof seg & { speaker?: string }).speaker
+    if (speaker && speaker !== lastSpeaker) {
+      md += `\n**${speaker}**\n\n`
+      lastSpeaker = speaker
+    }
     md += `**[${formatTime(seg.start)}]** ${seg.text}\n\n`
   }
 

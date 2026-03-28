@@ -31,6 +31,23 @@ function Input({ value, onChange, type = 'text', placeholder }: {
   )
 }
 
+function TextArea({ value, onChange, placeholder, rows = 3 }: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  rows?: number
+}): React.JSX.Element {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      className="no-drag w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-white/90 text-xs outline-none focus:border-white/25 transition-colors resize-none"
+    />
+  )
+}
+
 function Select({ value, onChange, options }: {
   value: string
   onChange: (v: string) => void
@@ -86,11 +103,28 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
     setSaved(false)
   }, [editConfig])
 
+  const [saving, setSaving] = useState(false)
+
   const handleSave = useCallback(async (): Promise<void> => {
-    await saveConfig()
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setSaving(true)
+    try {
+      await saveConfig()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      console.error('[Settings] Save failed:', err)
+    } finally {
+      setSaving(false)
+    }
   }, [saveConfig])
+
+  const handleClose = useCallback((): void => {
+    if (dirty) {
+      // Auto-save on close to prevent lost changes
+      saveConfig().catch(() => { /* ignore */ })
+    }
+    onClose()
+  }, [dirty, saveConfig, onClose])
 
   if (loading) {
     return (
@@ -111,17 +145,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
           )}
           <button
             onClick={handleSave}
-            disabled={!dirty}
+            disabled={!dirty || saving}
             className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-              dirty
+              dirty && !saving
                 ? 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/20'
                 : 'bg-white/5 text-white/30 cursor-not-allowed'
             }`}
           >
-            Save
+            {saving ? 'Saving...' : 'Save'}
           </button>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
             title="Close settings"
           >
@@ -148,6 +182,32 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             ]}
           />
         </SettingRow>
+      </Section>
+
+      {/* Meeting Format */}
+      <Section title="Meeting Format">
+        <SettingRow label="Default">
+          <Select
+            value={config.summary.meetingFormat}
+            onChange={(v) => handleUpdate({ summary: { ...config.summary, meetingFormat: v } })}
+            options={[
+              { value: 'auto', label: 'Auto-detect' },
+              { value: 'sales', label: 'Sales Call' },
+              { value: 'standup', label: 'Stand-up' },
+              { value: 'team', label: 'Team Meeting' },
+              { value: 'one_on_one', label: '1on1' },
+              { value: 'brainstorm', label: 'Brainstorm' }
+            ]}
+          />
+        </SettingRow>
+        <div className="space-y-1">
+          <label className="text-white/40 text-[10px]">Custom Instructions</label>
+          <TextArea
+            value={config.summary.customInstructions}
+            onChange={(v) => handleUpdate({ summary: { ...config.summary, customInstructions: v } })}
+            placeholder="Add custom instructions for how summaries should be formatted (e.g., team context, specific sections, tone)..."
+          />
+        </div>
       </Section>
 
       {/* Transcription */}
@@ -287,6 +347,77 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             placeholder="./meetings"
           />
         </SettingRow>
+      </Section>
+
+      {/* Meeting Detection */}
+      <Section title="Meeting Detection">
+        <Toggle
+          checked={config.meetingDetection.enabled}
+          onChange={(v) => handleUpdate({ meetingDetection: { ...config.meetingDetection, enabled: v } })}
+          label="Auto-detect meetings"
+        />
+        {config.meetingDetection.enabled && (
+          <div className="rounded-lg px-3 py-2 bg-blue-500/5 text-white/40 text-[10px] leading-relaxed">
+            Automatically detects when Zoom, Google Meet, or Teams is running and prompts to start recording.
+          </div>
+        )}
+      </Section>
+
+      {/* Consent */}
+      <Section title="Audio Consent">
+        <Toggle
+          checked={config.consent.enabled}
+          onChange={(v) => handleUpdate({ consent: { ...config.consent, enabled: v } })}
+          label="Show consent notification"
+        />
+        {config.consent.enabled && (
+          <div className="space-y-1">
+            <label className="text-white/40 text-[10px]">Consent message</label>
+            <TextArea
+              value={config.consent.message}
+              onChange={(v) => handleUpdate({ consent: { ...config.consent, message: v } })}
+              placeholder="This meeting is being recorded..."
+              rows={2}
+            />
+          </div>
+        )}
+      </Section>
+
+      {/* Calendar */}
+      <Section title="Calendar">
+        <Toggle
+          checked={config.calendar.enabled}
+          onChange={(v) => handleUpdate({ calendar: { ...config.calendar, enabled: v } })}
+          label="Google Calendar"
+        />
+        {config.calendar.enabled && (
+          <div className="pl-4 space-y-2">
+            <p className="text-white/30 text-[10px] leading-relaxed">
+              Create OAuth credentials at console.cloud.google.com, enable Calendar API, and add your credentials below.
+            </p>
+            <SettingRow label="Client ID">
+              <Input
+                value={config.calendar.google?.clientId || ''}
+                onChange={(v) => handleUpdate({ calendar: { ...config.calendar, google: { ...config.calendar.google, clientId: v } } })}
+                placeholder="...apps.googleusercontent.com"
+              />
+            </SettingRow>
+            <SettingRow label="Client Secret">
+              <Input
+                value={config.calendar.google?.clientSecret || ''}
+                onChange={(v) => handleUpdate({ calendar: { ...config.calendar, google: { ...config.calendar.google, clientSecret: v } } })}
+                type="password"
+              />
+            </SettingRow>
+            <SettingRow label="Refresh Token">
+              <Input
+                value={config.calendar.google?.refreshToken || ''}
+                onChange={(v) => handleUpdate({ calendar: { ...config.calendar, google: { ...config.calendar.google, refreshToken: v } } })}
+                type="password"
+              />
+            </SettingRow>
+          </div>
+        )}
       </Section>
 
       {/* Integrations */}

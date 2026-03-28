@@ -22,13 +22,20 @@ transcription:
     scriptPath: "~/transcribe.py"
 
 summary:
-  mode: "cli"             # cli | api
+  mode: "cli"             # cli | anthropic | openai | gemini
   language: "ja"
-  # API settings (when mode: api) — Anthropic Claude API
-  api:
-    apiKey: ""            # Anthropic API key (BYOK)
+  meetingFormat: "auto"   # auto | sales | standup | team | one_on_one | brainstorm
+  customInstructions: ""  # Custom instructions for summary generation
+  anthropic:
+    apiKey: ""
     model: "claude-sonnet-4-20250514"
     maxTokens: 4096
+  openai:
+    apiKey: ""
+    model: "gpt-4o"
+  gemini:
+    apiKey: ""
+    model: "gemini-2.5-flash"
 
 output:
   directory: "./meetings"
@@ -49,6 +56,23 @@ remote:
   host: ""
   user: ""
   path: "~/meetings"
+
+calendar:
+  enabled: false
+  provider: "google"      # google | outlook
+  google:
+    clientId: ""
+    clientSecret: ""
+    refreshToken: ""
+  autoDetectMeetings: true
+
+meetingDetection:
+  enabled: true
+  autoPrompt: true        # Show prompt when meeting app detected
+
+consent:
+  enabled: false
+  message: "This meeting is being recorded and transcribed by AI."
 
 hotkeys:
   toggle: "Ctrl+Shift+M"

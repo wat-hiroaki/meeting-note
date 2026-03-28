@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+export const MeetingFormatSchema = z.enum(['auto', 'sales', 'standup', 'team', 'one_on_one', 'brainstorm']).default('auto')
+export type MeetingFormat = z.infer<typeof MeetingFormatSchema>
+
 export const ConfigSchema = z.object({
   recording: z.object({
     micDevice: z.string().default('default'),
@@ -20,12 +23,15 @@ export const ConfigSchema = z.object({
     api: z.object({
       apiKey: z.string().default(''),
       model: z.string().default('whisper-1')
-    }).default({})
+    }).default({}),
+    diarize: z.boolean().default(true)
   }).default({}),
 
   summary: z.object({
     mode: z.enum(['cli', 'anthropic', 'openai', 'gemini']).default('cli'),
     language: z.string().default('en'),
+    meetingFormat: MeetingFormatSchema,
+    customInstructions: z.string().default(''),
     anthropic: z.object({
       apiKey: z.string().default(''),
       model: z.string().default('claude-sonnet-4-20250514'),
@@ -65,6 +71,27 @@ export const ConfigSchema = z.object({
     path: z.string().default('~/meetings')
   }).default({}),
 
+  calendar: z.object({
+    enabled: z.boolean().default(false),
+    provider: z.enum(['google', 'outlook']).default('google'),
+    google: z.object({
+      clientId: z.string().default(''),
+      clientSecret: z.string().default(''),
+      refreshToken: z.string().default('')
+    }).default({}),
+    autoDetectMeetings: z.boolean().default(true)
+  }).default({}),
+
+  meetingDetection: z.object({
+    enabled: z.boolean().default(true),
+    autoPrompt: z.boolean().default(true)
+  }).default({}),
+
+  consent: z.object({
+    enabled: z.boolean().default(false),
+    message: z.string().default('This meeting is being recorded and transcribed by AI.')
+  }).default({}),
+
   hotkeys: z.object({
     toggle: z.string().default('Ctrl+Shift+M'),
     record: z.string().default('Ctrl+Shift+R'),
@@ -76,3 +103,35 @@ export const ConfigSchema = z.object({
 })
 
 export type Config = z.infer<typeof ConfigSchema>
+
+// Meeting history entry stored in JSON
+export interface MeetingHistoryEntry {
+  id: string
+  date: string // ISO date string
+  title: string
+  duration: number // seconds
+  format: MeetingFormat
+  summaryPath: string // path to markdown file
+  calendarEventId?: string
+  calendarEventTitle?: string
+  actionItems: ActionItem[]
+  tags: string[]
+}
+
+export interface ActionItem {
+  text: string
+  owner?: string
+  priority?: 'high' | 'medium' | 'low'
+  dueDate?: string
+  completed: boolean
+}
+
+export interface CalendarEvent {
+  id: string
+  title: string
+  start: string // ISO date string
+  end: string
+  meetingLink?: string // Zoom/Meet/Teams URL
+  attendees: string[]
+  platform?: 'zoom' | 'google_meet' | 'teams' | 'other'
+}

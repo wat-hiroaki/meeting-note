@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 interface UseAudioRecorderReturn {
   start: (micDeviceId?: string) => Promise<void>
@@ -9,6 +9,11 @@ interface UseAudioRecorderReturn {
   isPaused: boolean
   error: string | null
 }
+
+// Safety: max recording duration 4 hours to prevent runaway recordings
+const MAX_RECORDING_MS = 4 * 60 * 60 * 1000
+// Safety: stop() must resolve within 10 seconds
+const STOP_TIMEOUT_MS = 10_000
 
 export function useAudioRecorder(): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false)
@@ -21,12 +26,26 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const displayStreamRef = useRef<MediaStream | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const mixedStreamRef = useRef<MediaStream | null>(null)
+  const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onStopCallbackRef = useRef<((buffer: ArrayBuffer | null) => void) | null>(null)
 
   const cleanup = useCallback(() => {
-    // Stop all tracks
-    displayStreamRef.current?.getTracks().forEach((t) => t.stop())
-    micStreamRef.current?.getTracks().forEach((t) => t.stop())
-    mixedStreamRef.current?.getTracks().forEach((t) => t.stop())
+    // Clear max duration timer
+    if (maxDurationTimerRef.current) {
+      clearTimeout(maxDurationTimerRef.current)
+      maxDurationTimerRef.current = null
+    }
+
+    // Stop all tracks safely
+    try {
+      displayStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+    } catch { /* ignore */ }
+    try {
+      micStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+    } catch { /* ignore */ }
+    try {
+      mixedStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+    } catch { /* ignore */ }
 
     // Close audio context
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
@@ -38,6 +57,22 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     mixedStreamRef.current = null
     audioContextRef.current = null
     mediaRecorderRef.current = null
+  }, [])
+
+  // Force-collect current chunks into a buffer (used for emergency recovery)
+  const collectBuffer = useCallback(async (): Promise<ArrayBuffer | null> => {
+    const chunks = chunksRef.current
+    chunksRef.current = []
+    if (chunks.length === 0) return null
+
+    const blob = new Blob(chunks, { type: 'audio/webm;codecs=opus' })
+    if (blob.size === 0) return null
+
+    try {
+      return await blob.arrayBuffer()
+    } catch {
+      return null
+    }
   }, [])
 
   const startingRef = useRef(false)
@@ -72,6 +107,19 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         throw new Error('Failed to capture system audio. Loopback audio not available.')
       }
 
+      // Monitor display audio track for unexpected end (e.g. system audio device disconnected)
+      displayAudioTracks.forEach((track) => {
+        track.onended = () => {
+          console.warn('[AudioRecorder] System audio track ended unexpectedly')
+          // If we're still recording, trigger an error-aware stop
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            setError('System audio track ended unexpectedly. Recording stopped.')
+            // Force stop the recorder — this will trigger onstop and save what we have
+            try { mediaRecorderRef.current.stop() } catch { /* ignore */ }
+          }
+        }
+      })
+
       // Get microphone audio
       const micConstraints: MediaStreamConstraints = {
         audio: micDeviceId && micDeviceId !== 'default' && micDeviceId !== 'none'
@@ -86,6 +134,14 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         try {
           micStream = await navigator.mediaDevices.getUserMedia(micConstraints)
           micStreamRef.current = micStream
+
+          // Monitor mic track for unexpected end
+          micStream.getAudioTracks().forEach((track) => {
+            track.onended = () => {
+              console.warn('[AudioRecorder] Mic track ended — continuing with system audio only')
+              // Don't stop recording, just log. System audio continues.
+            }
+          })
         } catch (micErr) {
           console.warn('[AudioRecorder] Mic capture failed, continuing with system audio only:', micErr)
         }
@@ -94,6 +150,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       // Mix streams using Web Audio API
       const audioContext = new AudioContext()
       audioContextRef.current = audioContext
+
+      // Handle AudioContext suspension (can happen on some systems)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume()
+      }
+
       const destination = audioContext.createMediaStreamDestination()
 
       // Add system audio source
@@ -126,12 +188,52 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         }
       }
 
+      // Guard: prevent double handling if both onerror and onstop fire
+      let handledRef = false
+
       recorder.onerror = () => {
-        setError('MediaRecorder error')
+        if (handledRef) return
+        handledRef = true
+        console.error('[AudioRecorder] MediaRecorder error event')
+        setError('Recording error — audio data may be incomplete')
+        setIsRecording(false)
+        setIsPaused(false)
+
+        // Try to resolve any pending stop() promise with what we have
+        if (onStopCallbackRef.current) {
+          collectBuffer().then(buf => {
+            onStopCallbackRef.current?.(buf)
+            onStopCallbackRef.current = null
+          })
+        }
+
+        cleanup()
+      }
+
+      // When onstop fires (from .stop() or track ended), collect data
+      recorder.onstop = async () => {
+        if (handledRef) return
+        handledRef = true
+        const buffer = await collectBuffer()
         setIsRecording(false)
         setIsPaused(false)
         cleanup()
+
+        // Resolve the pending stop() promise if there is one
+        if (onStopCallbackRef.current) {
+          onStopCallbackRef.current(buffer)
+          onStopCallbackRef.current = null
+        }
       }
+
+      // Safety: max recording duration
+      maxDurationTimerRef.current = setTimeout(() => {
+        console.warn('[AudioRecorder] Max recording duration reached, auto-stopping')
+        setError('Recording reached maximum duration (4 hours) and was stopped automatically.')
+        if (recorder.state !== 'inactive') {
+          try { recorder.stop() } catch { /* ignore */ }
+        }
+      }, MAX_RECORDING_MS)
 
       // Record in 1-second chunks for responsive stop
       recorder.start(1000)
@@ -145,51 +247,116 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       cleanup()
       throw err
     }
-  }, [cleanup])
+  }, [cleanup, collectBuffer])
 
   const stop = useCallback(async (): Promise<ArrayBuffer | null> => {
     const recorder = mediaRecorderRef.current
     if (!recorder || recorder.state === 'inactive') {
+      // No active recorder — try to collect any existing chunks
+      const buffer = await collectBuffer()
       cleanup()
       setIsRecording(false)
       setIsPaused(false)
-      return null
+      return buffer
     }
 
     return new Promise<ArrayBuffer | null>((resolve) => {
-      recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' })
-        chunksRef.current = []
+      // Set up the callback that onstop will use
+      onStopCallbackRef.current = resolve
+
+      // Safety timeout: if onstop doesn't fire within STOP_TIMEOUT_MS, force-resolve
+      const safetyTimeout = setTimeout(async () => {
+        console.warn('[AudioRecorder] stop() timed out — force-collecting chunks')
+        onStopCallbackRef.current = null
+        const buffer = await collectBuffer()
         cleanup()
         setIsRecording(false)
         setIsPaused(false)
-
-        if (blob.size === 0) {
-          resolve(null)
-          return
-        }
-
-        const buffer = await blob.arrayBuffer()
         resolve(buffer)
+      }, STOP_TIMEOUT_MS)
+
+      // Override the callback to also clear the safety timeout
+      const originalResolve = resolve
+      onStopCallbackRef.current = (buffer) => {
+        clearTimeout(safetyTimeout)
+        originalResolve(buffer)
       }
 
-      recorder.stop()
+      try {
+        recorder.stop()
+      } catch {
+        // recorder.stop() threw — force-collect
+        clearTimeout(safetyTimeout)
+        onStopCallbackRef.current = null
+        collectBuffer().then(buf => {
+          cleanup()
+          setIsRecording(false)
+          setIsPaused(false)
+          resolve(buf)
+        })
+      }
     })
-  }, [cleanup])
+  }, [cleanup, collectBuffer])
 
   const pause = useCallback(() => {
     const recorder = mediaRecorderRef.current
     if (recorder && recorder.state === 'recording') {
-      recorder.pause()
-      setIsPaused(true)
+      try {
+        recorder.pause()
+        setIsPaused(true)
+      } catch (err) {
+        console.error('[AudioRecorder] pause() failed:', err)
+      }
     }
   }, [])
 
   const resume = useCallback(() => {
     const recorder = mediaRecorderRef.current
     if (recorder && recorder.state === 'paused') {
-      recorder.resume()
-      setIsPaused(false)
+      try {
+        recorder.resume()
+        setIsPaused(false)
+      } catch (err) {
+        console.error('[AudioRecorder] resume() failed:', err)
+      }
+    }
+
+    // Also resume AudioContext if suspended
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume().catch(() => { /* ignore */ })
+    }
+  }, [])
+
+  // Cleanup on unmount — stop any active recording and release resources
+  // This prevents leaked MediaStreams/AudioContexts if the component unmounts mid-recording
+  useEffect(() => {
+    // Capture refs locally so cleanup works correctly
+    const recorderRef = mediaRecorderRef
+    const cleanupFn = (): void => {
+      if (maxDurationTimerRef.current) {
+        clearTimeout(maxDurationTimerRef.current)
+        maxDurationTimerRef.current = null
+      }
+      try {
+        displayStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+      } catch { /* ignore */ }
+      try {
+        micStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+      } catch { /* ignore */ }
+      try {
+        mixedStreamRef.current?.getTracks().forEach((t) => { try { t.stop() } catch { /* ignore */ } })
+      } catch { /* ignore */ }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(() => { /* ignore */ })
+      }
+    }
+
+    return () => {
+      const recorder = recorderRef.current
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop() } catch { /* ignore */ }
+      }
+      cleanupFn()
     }
   }, [])
 

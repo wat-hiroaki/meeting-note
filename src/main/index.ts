@@ -2,9 +2,11 @@ import { app, BrowserWindow, shell, session, desktopCapturer } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
+import { cleanupStaleTempFiles } from './recorder'
 import { createTray } from './tray'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { getConfig } from './config'
+import { startMeetingDetection, stopMeetingDetection } from './meeting-detector'
 
 // Prevent crash dialogs for non-critical spawn errors (e.g. ffmpeg not installed)
 process.on('uncaughtException', (err) => {
@@ -15,10 +17,23 @@ process.on('uncaughtException', (err) => {
   }
 })
 
+// Catch unhandled promise rejections — log but don't crash
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled promise rejection:', reason)
+  // Don't quit — these are usually non-fatal (failed API calls, etc.)
+})
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
-  const config = getConfig()
+  let config
+  try {
+    config = getConfig()
+  } catch (err) {
+    console.error('[Main] Failed to load config, using defaults:', err)
+    const { ConfigSchema } = require('../shared/types')
+    config = ConfigSchema.parse({})
+  }
   const isOnboarded = config.onboarded
 
   const isMac = process.platform === 'darwin'
@@ -68,22 +83,58 @@ function createWindow(): void {
 
   // Auto-approve display media requests with loopback audio
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
-    const sources = await desktopCapturer.getSources({ types: ['screen'] })
-    callback({ video: sources[0], audio: 'loopback' })
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] })
+      if (sources.length === 0) {
+        console.error('[Main] No screen sources available for display media')
+        callback({ video: null as unknown as Electron.DesktopCapturerSource })
+        return
+      }
+      callback({ video: sources[0], audio: 'loopback' })
+    } catch (err) {
+      console.error('[Main] Failed to get screen sources:', err)
+      callback({ video: null as unknown as Electron.DesktopCapturerSource })
+    }
   })
 
   // Setup tray and hotkeys
   createTray(mainWindow)
   registerHotkeys(mainWindow)
+
+  // Start meeting detection if enabled
+  if (isOnboarded && config.meetingDetection.enabled) {
+    startMeetingDetection(
+      (meeting) => {
+        console.log('[Main] Meeting detected:', meeting.platform)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('meeting:detected', meeting)
+          // Show window if hidden
+          if (!mainWindow.isVisible()) {
+            mainWindow.show()
+          }
+        }
+      },
+      () => {
+        console.log('[Main] Meeting ended')
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('meeting:ended')
+        }
+      }
+    )
+  }
 }
 
 app.whenReady().then(() => {
+  // Clean up stale temp files from previous sessions
+  cleanupStaleTempFiles()
+
   registerIpcHandlers()
   createWindow()
 })
 
 app.on('will-quit', () => {
   unregisterHotkeys()
+  stopMeetingDetection()
 })
 
 app.on('window-all-closed', () => {

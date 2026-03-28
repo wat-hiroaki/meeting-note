@@ -2,12 +2,19 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import type { RecordingStatus } from '../components/StatusIndicator'
 import { useAudioRecorder } from './useAudioRecorder'
 
+interface StartOptions {
+  micDevice?: string
+  meetingFormat?: string
+  calendarEventTitle?: string
+  calendarEventId?: string
+}
+
 interface UseRecordingReturn {
   status: RecordingStatus
   seconds: number
   error: string | null
   outputPath: string | null
-  start: (options?: { micDevice?: string }) => void
+  start: (options?: StartOptions) => void
   pause: () => void
   resume: () => void
   stop: () => void
@@ -37,15 +44,20 @@ export function useRecording(): UseRecordingReturn {
     }
   }, [])
 
-  const start = useCallback((options?: { micDevice?: string }): void => {
+  const start = useCallback((options?: StartOptions): void => {
     setSeconds(0)
     setError(null)
     setOutputPath(null)
     setStatus('recording')
     startTimer()
 
-    // Notify main process (for timestamp tracking)
-    window.electronAPI.startRecording(options).catch(() => { /* ignore */ })
+    // Notify main process (for timestamp tracking and meeting format)
+    window.electronAPI.startRecording({
+      micDevice: options?.micDevice,
+      meetingFormat: options?.meetingFormat as 'auto' | 'sales' | 'standup' | 'team' | 'one_on_one' | 'brainstorm' | undefined,
+      calendarEventTitle: options?.calendarEventTitle,
+      calendarEventId: options?.calendarEventId
+    }).catch(() => { /* ignore */ })
 
     // Start Web Audio recording
     audioRecorder.start(options?.micDevice).catch((err: unknown) => {
@@ -81,7 +93,11 @@ export function useRecording(): UseRecordingReturn {
 
       // Send buffer to main process for saving + conversion + pipeline
       try {
-        await window.electronAPI.saveAudio(buffer, { duration: seconds })
+        const result = await window.electronAPI.saveAudio(buffer, { duration: seconds })
+        if (!result) {
+          // saveAudio returned empty — error was already sent via IPC events
+          // Status will be updated by the onPipelineError listener
+        }
       } catch (err: unknown) {
         setStatus('error')
         setError(err instanceof Error ? err.message : 'Failed to save recording')
@@ -132,26 +148,35 @@ export function useRecording(): UseRecordingReturn {
   }, [])
 
   // Listen for hotkey actions from main process
-  useEffect(() => {
-    const statusRef = { current: status }
-    statusRef.current = status
+  // Use refs to avoid re-registering the listener on every state change
+  const statusRef = useRef(status)
+  statusRef.current = status
+  const startRef = useRef(start)
+  startRef.current = start
+  const pauseRef = useRef(pause)
+  pauseRef.current = pause
+  const resumeRef = useRef(resume)
+  resumeRef.current = resume
+  const stopRef = useRef(stop)
+  stopRef.current = stop
 
+  useEffect(() => {
     const cleanup = window.electronAPI.onHotkeyAction((action: string) => {
       switch (action) {
         case 'record':
-          if (statusRef.current === 'idle' || statusRef.current === 'done') start()
+          if (statusRef.current === 'idle' || statusRef.current === 'done') startRef.current()
           break
         case 'pause':
-          if (statusRef.current === 'recording') pause()
-          else if (statusRef.current === 'paused') resume()
+          if (statusRef.current === 'recording') pauseRef.current()
+          else if (statusRef.current === 'paused') resumeRef.current()
           break
         case 'stop':
-          if (statusRef.current === 'recording' || statusRef.current === 'paused') stop()
+          if (statusRef.current === 'recording' || statusRef.current === 'paused') stopRef.current()
           break
       }
     })
     return cleanup
-  }, [status, start, pause, resume, stop])
+  }, [])
 
   // Cleanup on unmount
   useEffect(() => {
