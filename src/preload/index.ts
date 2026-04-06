@@ -44,6 +44,7 @@ const api = {
   checkFasterWhisper: (): Promise<boolean> => ipcRenderer.invoke('system:checkFasterWhisper'),
   checkWhisperModel: (model: string): Promise<{ cached: boolean; model: string; size: string }> => ipcRenderer.invoke('system:checkWhisperModel', model),
   downloadWhisperModel: (model: string): Promise<boolean> => ipcRenderer.invoke('system:downloadWhisperModel', model),
+  checkOllama: (host?: string): Promise<{ available: boolean; models: string[] }> => ipcRenderer.invoke('system:checkOllama', host),
   onWhisperDownloadStatus: (callback: (msg: { status: string; model?: string; size?: string; error?: string }) => void): (() => void) => {
     const handler = (_event: IpcRendererEvent, msg: { status: string; model?: string; size?: string; error?: string }): void => callback(msg)
     ipcRenderer.on('whisper:download-status', handler)

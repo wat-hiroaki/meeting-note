@@ -265,6 +265,19 @@ export function registerIpcHandlers(): void {
     })
   })
 
+  // ===== Ollama check =====
+  ipcMain.handle('system:checkOllama', async (_event, host: string) => {
+    try {
+      const url = (host || 'http://localhost:11434') + '/api/tags'
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+      if (!res.ok) return { available: false, models: [] }
+      const data = (await res.json()) as { models?: Array<{ name: string }> }
+      return { available: true, models: (data.models || []).map(m => m.name) }
+    } catch {
+      return { available: false, models: [] }
+    }
+  })
+
   // ===== Meetings History =====
   ipcMain.handle('meetings:getHistory', (_event, limit?: number, offset?: number) => {
     return getMeetingsHistory(limit || 50, offset || 0)

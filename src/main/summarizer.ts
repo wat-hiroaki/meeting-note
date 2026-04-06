@@ -277,7 +277,62 @@ const FORMAT_PROMPTS: Record<MeetingFormat, string> = {
 
 ### 次のステップ
 - どのアイデアを深掘りするか
-- プロトタイプ/調査のフォローアップ`
+- プロトタイプ/調査のフォローアップ`,
+
+  soap: `診療・医療面談の文字起こしをSOAP形式で構造化してください。
+患者のプライバシーに配慮し、事実ベースで正確にまとめること。
+
+## 出力フォーマット:
+
+### 診療記録 (SOAP)
+
+### S（Subjective / 主観的情報）
+患者の主訴・自覚症状・経過の訴え:
+- 症状の内容 → [MM:SS]
+
+### O（Objective / 客観的情報）
+診察所見・検査結果・バイタルサイン（言及があれば）:
+- 所見/結果 → [MM:SS]
+
+### A（Assessment / 評価）
+診断名・病態の評価・鑑別診断:
+- 評価内容 → [MM:SS]
+
+### P（Plan / 計画）
+治療方針・処方・検査予定・次回予約・患者指導:
+- [ ] 計画内容 | 担当: @名前 | 優先度: 高/中/低 | 期日: YYYY-MM-DD → [MM:SS]
+
+### 備考
+- 上記に分類しにくい重要な情報 → [MM:SS]
+
+### アクションアイテム
+- [ ] フォローアップ内容 | 担当: @名前 | 優先度: 高/中/低 | 期日: YYYY-MM-DD → [MM:SS]`,
+
+  interview: `面談・コンサルテーションの文字起こしを、フォローアップに繋がる形式で要約してください。
+
+## 出力フォーマット:
+
+### 面談サマリー
+> **参加者**: [特定できた名前/役割]
+> **目的**: [面談の目的]
+
+### 要点
+議論された主要なポイント:
+- ポイント → [MM:SS]
+
+### 合意事項
+双方が同意した内容:
+- 合意内容 → [MM:SS]
+
+### 懸念・課題
+挙がった懸念点や未解決の課題:
+- 懸念/課題 → [MM:SS]
+
+### アクションアイテム
+- [ ] アクション内容 | 担当: @名前 | 優先度: 高/中/低 | 期日: YYYY-MM-DD → [MM:SS]
+
+### 次のステップ
+- フォローアップ事項と次回予定`
 }
 
 export interface SummaryResult {
@@ -336,11 +391,21 @@ export async function summarize(transcript: TranscriptResult, format?: MeetingFo
 
   prompt += '---\n## 文字起こし（タイムスタンプ付き）:\n' + text
 
+  // Secure Mode: block cloud API calls
+  const cloudModes = new Set(['anthropic', 'openai', 'gemini'])
+  if (config.secureMode && cloudModes.has(config.summary.mode)) {
+    throw new Error(
+      'Secure Mode is enabled — cloud API calls are blocked. ' +
+      'Switch to "Claude Code CLI" or "Ollama" in Settings, or disable Secure Mode.'
+    )
+  }
+
   let summary: string
   switch (config.summary.mode) {
     case 'anthropic': summary = await withRetry(() => summarizeAnthropic(prompt)); break
     case 'openai': summary = await withRetry(() => summarizeOpenAI(prompt)); break
     case 'gemini': summary = await withRetry(() => summarizeGemini(prompt)); break
+    case 'ollama': summary = await summarizeOllama(prompt); break
     default: summary = await summarizeCLI(prompt); break
   }
 
@@ -535,6 +600,32 @@ async function summarizeGemini(prompt: string): Promise<string> {
 
   const data = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
   return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Summary could not be generated.'
+}
+
+async function summarizeOllama(prompt: string): Promise<string> {
+  const config = getConfig()
+  const { host, model } = config.summary.ollama
+
+  const response = await fetchWithTimeout(`${host}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      prompt,
+      stream: false
+    })
+  }, SUMMARY_API_TIMEOUT_MS)
+
+  if (!response.ok) {
+    const error = await response.text().catch(() => 'Unknown error')
+    if (response.status === 404) {
+      throw new Error(`Ollama model "${model}" not found. Run: ollama pull ${model}`)
+    }
+    throw new Error(`Ollama error (${response.status}): ${error}`)
+  }
+
+  const data = (await response.json()) as { response?: string }
+  return data.response?.trim() || 'Summary could not be generated.'
 }
 
 function formatTime(seconds: number): string {

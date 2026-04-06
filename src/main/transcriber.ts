@@ -89,6 +89,14 @@ function isTransientError(err: unknown): boolean {
 export async function transcribe(audioPath: string): Promise<TranscriptResult> {
   const config = getConfig()
 
+  // Secure Mode: block cloud transcription
+  if (config.secureMode && config.transcription.mode === 'api') {
+    throw new Error(
+      'Secure Mode is enabled — cloud transcription API is blocked. ' +
+      'Switch to "Local (faster-whisper)" in Settings, or disable Secure Mode.'
+    )
+  }
+
   switch (config.transcription.mode) {
     case 'api':
       return withRetry(() => transcribeAPI(audioPath))

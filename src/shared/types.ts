@@ -1,9 +1,11 @@
 import { z } from 'zod'
 
-export const MeetingFormatSchema = z.enum(['auto', 'sales', 'standup', 'team', 'one_on_one', 'brainstorm']).default('auto')
+export const MeetingFormatSchema = z.enum(['auto', 'sales', 'standup', 'team', 'one_on_one', 'brainstorm', 'soap', 'interview']).default('auto')
 export type MeetingFormat = z.infer<typeof MeetingFormatSchema>
 
 export const ConfigSchema = z.object({
+  secureMode: z.boolean().default(false),
+
   recording: z.object({
     micDevice: z.string().default('default'),
     format: z.enum(['wav', 'mp3']).default('wav'),
@@ -28,7 +30,7 @@ export const ConfigSchema = z.object({
   }).default({}),
 
   summary: z.object({
-    mode: z.enum(['cli', 'anthropic', 'openai', 'gemini']).default('cli'),
+    mode: z.enum(['cli', 'anthropic', 'openai', 'gemini', 'ollama']).default('cli'),
     language: z.string().default('en'),
     meetingFormat: MeetingFormatSchema,
     customInstructions: z.string().default(''),
@@ -44,6 +46,10 @@ export const ConfigSchema = z.object({
     gemini: z.object({
       apiKey: z.string().default(''),
       model: z.string().default('gemini-2.5-flash')
+    }).default({}),
+    ollama: z.object({
+      host: z.string().default('http://localhost:11434'),
+      model: z.string().default('qwen2.5:14b')
     }).default({})
   }).default({}),
 

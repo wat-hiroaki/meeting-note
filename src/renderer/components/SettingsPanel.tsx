@@ -167,6 +167,20 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         </div>
       </div>
 
+      {/* Secure Mode */}
+      <Section title="Secure Mode">
+        <Toggle
+          checked={config.secureMode || false}
+          onChange={(v) => handleUpdate({ secureMode: v })}
+          label="Local-only processing"
+        />
+        {config.secureMode && (
+          <div className="rounded-lg px-3 py-2 bg-green-500/5 text-green-400/70 text-[10px] leading-relaxed">
+            All data stays on this device. Cloud APIs (transcription, summary, Notion, Slack) are blocked. Uses local Whisper + Ollama.
+          </div>
+        )}
+      </Section>
+
       {/* Recording */}
       <Section title="Recording">
         <div className="rounded-lg px-3 py-2 bg-green-500/5 text-green-400/70 text-[10px] leading-relaxed">
@@ -196,7 +210,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
               { value: 'standup', label: 'Stand-up' },
               { value: 'team', label: 'Team Meeting' },
               { value: 'one_on_one', label: '1on1' },
-              { value: 'brainstorm', label: 'Brainstorm' }
+              { value: 'brainstorm', label: 'Brainstorm' },
+              { value: 'soap', label: 'Medical (SOAP)' },
+              { value: 'interview', label: 'Interview / Consultation' }
             ]}
           />
         </SettingRow>
@@ -295,6 +311,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             onChange={(v) => handleUpdate({ summary: { ...config.summary, mode: v } })}
             options={[
               { value: 'cli', label: 'Claude Code CLI (Free)' },
+              { value: 'ollama', label: 'Ollama (Local)' },
               { value: 'anthropic', label: 'Anthropic API' },
               { value: 'openai', label: 'OpenAI API (Beta)' },
               { value: 'gemini', label: 'Gemini API (Beta)' }
@@ -304,6 +321,27 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         {config.summary.mode === 'cli' && (
           <div className="rounded-lg px-3 py-2 bg-blue-500/5 text-white/50 text-[10px] leading-relaxed">
             Uses your Claude Code subscription (Max $20/mo or Pro $100/mo) — no API key needed. Run <code className="text-white/70">claude</code> in terminal to sign in.
+          </div>
+        )}
+        {config.summary.mode === 'ollama' && (
+          <div className="pl-4 space-y-2">
+            <div className="rounded-lg px-3 py-2 bg-green-500/5 text-green-400/70 text-[10px] leading-relaxed">
+              Fully local — no data leaves your machine. Install Ollama from ollama.com and pull a model (e.g. <code className="text-white/70">ollama pull qwen2.5:14b</code>).
+            </div>
+            <SettingRow label="Host">
+              <Input
+                value={config.summary.ollama?.host || 'http://localhost:11434'}
+                onChange={(v) => handleUpdate({ summary: { ...config.summary, ollama: { ...config.summary.ollama, host: v } } })}
+                placeholder="http://localhost:11434"
+              />
+            </SettingRow>
+            <SettingRow label="Model">
+              <Input
+                value={config.summary.ollama?.model || 'qwen2.5:14b'}
+                onChange={(v) => handleUpdate({ summary: { ...config.summary, ollama: { ...config.summary.ollama, model: v } } })}
+                placeholder="qwen2.5:14b"
+              />
+            </SettingRow>
           </div>
         )}
         {config.summary.mode === 'anthropic' && (

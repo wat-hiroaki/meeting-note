@@ -153,7 +153,10 @@ export async function runPipeline(
     const errors: string[] = []
     let notionPageId: string | undefined
 
-    if (config.notion.enabled) {
+    // Secure Mode: skip cloud publishing
+    const skipCloudPublish = config.secureMode
+
+    if (config.notion.enabled && !skipCloudPublish) {
       try {
         notionPageId = await publishToNotion(meetingData)
       } catch (err) {
@@ -163,7 +166,7 @@ export async function runPipeline(
       }
     }
 
-    if (config.slack.enabled) {
+    if (config.slack.enabled && !skipCloudPublish) {
       try {
         await publishToSlack(meetingData, notionPageId)
       } catch (err) {
