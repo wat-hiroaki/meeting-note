@@ -396,8 +396,13 @@ export async function summarize(transcript: TranscriptResult, format?: MeetingFo
   if (config.secureMode && cloudModes.has(config.summary.mode)) {
     throw new Error(
       'Secure Mode is enabled — cloud API calls are blocked. ' +
-      'Switch to "Claude Code CLI" or "Ollama" in Settings, or disable Secure Mode.'
+      'Switch to "Ollama" in Settings, or disable Secure Mode.'
     )
+  }
+
+  // Secure Mode + CLI warning: CLI sends data to Anthropic servers
+  if (config.secureMode && config.summary.mode === 'cli') {
+    console.warn('[Summarizer] Secure Mode is ON but using Claude CLI, which sends data to Anthropic servers. Consider switching to Ollama for fully local processing.')
   }
 
   let summary: string
@@ -606,15 +611,26 @@ async function summarizeOllama(prompt: string): Promise<string> {
   const config = getConfig()
   const { host, model } = config.summary.ollama
 
-  const response = await fetchWithTimeout(`${host}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      prompt,
-      stream: false
-    })
-  }, SUMMARY_API_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await fetchWithTimeout(`${host}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        prompt,
+        stream: false
+      })
+    }, SUMMARY_API_TIMEOUT_MS)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
+      throw new Error(
+        `Ollama is not running. Start it with "ollama serve" or launch the Ollama app, then try again.`
+      )
+    }
+    throw err
+  }
 
   if (!response.ok) {
     const error = await response.text().catch(() => 'Unknown error')

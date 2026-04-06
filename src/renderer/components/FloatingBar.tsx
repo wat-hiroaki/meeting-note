@@ -9,7 +9,7 @@ import { AudioWaveform } from './AudioWaveform'
 import { useRecording } from '../hooks/useRecording'
 import { useConfig } from '../hooks/useConfig'
 
-type MeetingFormat = 'auto' | 'sales' | 'standup' | 'team' | 'one_on_one' | 'brainstorm'
+type MeetingFormat = 'auto' | 'sales' | 'standup' | 'team' | 'one_on_one' | 'brainstorm' | 'soap' | 'interview'
 
 const FORMAT_OPTIONS: { value: MeetingFormat; label: string; short: string }[] = [
   { value: 'auto', label: 'Auto', short: 'Auto' },
@@ -17,7 +17,9 @@ const FORMAT_OPTIONS: { value: MeetingFormat; label: string; short: string }[] =
   { value: 'standup', label: 'Stand-up', short: 'Standup' },
   { value: 'team', label: 'Team Meeting', short: 'Team' },
   { value: 'one_on_one', label: '1on1', short: '1on1' },
-  { value: 'brainstorm', label: 'Brainstorm', short: 'Brain' }
+  { value: 'brainstorm', label: 'Brainstorm', short: 'Brain' },
+  { value: 'soap', label: 'Medical (SOAP)', short: 'SOAP' },
+  { value: 'interview', label: 'Interview', short: 'Intv' }
 ]
 
 // SVG icons as inline components
@@ -259,6 +261,10 @@ export function FloatingBar(): React.JSX.Element {
   return (
     <div className="w-full p-1">
       <div className="drag-region glass-bar rounded-2xl px-3 py-2.5 flex items-center gap-3">
+        {/* Secure Mode indicator */}
+        {config.secureMode && (
+          <span className="text-green-400 text-[10px]" title="Secure Mode: all processing is local">🔒</span>
+        )}
         {/* Status */}
         <StatusIndicator status={status} />
 

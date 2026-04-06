@@ -168,15 +168,34 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
       </div>
 
       {/* Secure Mode */}
-      <Section title="Secure Mode">
+      <Section title="🔒 Secure Mode">
         <Toggle
           checked={config.secureMode || false}
-          onChange={(v) => handleUpdate({ secureMode: v })}
+          onChange={(v) => {
+            const updates: Record<string, unknown> = { secureMode: v }
+            if (v) {
+              // Auto-switch to local-only settings
+              const safeTranscription = { ...config.transcription }
+              if (safeTranscription.mode === 'api') safeTranscription.mode = 'local'
+              const safeSummary = { ...config.summary }
+              if (['anthropic', 'openai', 'gemini'].includes(safeSummary.mode)) {
+                safeSummary.mode = 'ollama'
+              }
+              updates.transcription = safeTranscription
+              updates.summary = safeSummary
+            }
+            handleUpdate(updates)
+          }}
           label="Local-only processing"
         />
         {config.secureMode && (
           <div className="rounded-lg px-3 py-2 bg-green-500/5 text-green-400/70 text-[10px] leading-relaxed">
-            All data stays on this device. Cloud APIs (transcription, summary, Notion, Slack) are blocked. Uses local Whisper + Ollama.
+            All data stays on this device. Cloud APIs (transcription, summary, Notion, Slack) are blocked. Transcription uses local Whisper, summary uses Ollama.
+            {config.summary.mode === 'cli' && (
+              <div className="mt-1 text-yellow-400/70">
+                ⚠ Claude CLI sends data to Anthropic servers. For fully local processing, switch summary mode to Ollama.
+              </div>
+            )}
           </div>
         )}
       </Section>
@@ -216,6 +235,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
             ]}
           />
         </SettingRow>
+        {config.summary.meetingFormat === 'soap' && (
+          <div className="rounded-lg px-3 py-2 bg-blue-500/5 text-white/40 text-[10px] leading-relaxed">
+            SOAP format structures notes into Subjective (patient complaints), Objective (findings), Assessment (diagnosis), and Plan (treatment). Designed for medical consultations.
+          </div>
+        )}
         <div className="space-y-1">
           <label className="text-white/40 text-[10px]">Custom Instructions</label>
           <TextArea
