@@ -188,20 +188,22 @@ export function FloatingBar(): React.JSX.Element {
     switch (status) {
       case 'idle':
       case 'done':
-      case 'error':
-        // Show consent notification if enabled and not yet shown
-        if (config.consent?.enabled && !consentShown) {
+      case 'error': {
+        // Medical mode forces consent + SOAP format
+        const needConsent = config.consent?.enabled ||
+          (config.medical?.enabled && config.medical?.requireConsent)
+        if (needConsent && !consentShown) {
           setConsentShown(true)
-          // Consent will be shown in expanded panel, recording starts after acknowledgment
           return
         }
         start({
           micDevice: config.recording.micDevice,
-          meetingFormat,
+          meetingFormat: config.medical?.enabled ? 'soap' : meetingFormat,
         })
         setConsentShown(false)
         setMeetingDetected(null)
         break
+      }
       case 'recording':
         pause()
         break
@@ -209,20 +211,29 @@ export function FloatingBar(): React.JSX.Element {
         resume()
         break
     }
-  }, [status, start, pause, resume, depsReady, meetingFormat, config.consent?.enabled, config.recording.micDevice, consentShown])
+  }, [status, start, pause, resume, depsReady, meetingFormat, config.consent?.enabled, config.recording.micDevice, consentShown, config.medical?.enabled, config.medical?.requireConsent])
 
   const handleConsentAccept = useCallback((): void => {
+    // Log consent to audit trail
+    window.electronAPI.logConsent?.('consent_obtained', {
+      meetingFormat: config.medical?.enabled ? 'soap' : meetingFormat,
+      consentMessage: config.consent?.message,
+    })
     start({
       micDevice: config.recording.micDevice,
-      meetingFormat,
+      meetingFormat: config.medical?.enabled ? 'soap' : meetingFormat,
     })
     setConsentShown(false)
     setMeetingDetected(null)
-  }, [start, config.recording.micDevice, meetingFormat])
+  }, [start, config.recording.micDevice, meetingFormat, config.medical?.enabled, config.consent?.message])
 
   const handleConsentDismiss = useCallback((): void => {
+    // Log consent decline to audit trail
+    window.electronAPI.logConsent?.('consent_declined', {
+      meetingFormat: config.medical?.enabled ? 'soap' : meetingFormat,
+    })
     setConsentShown(false)
-  }, [])
+  }, [meetingFormat, config.medical?.enabled])
 
   const handleMinimize = useCallback((): void => {
     window.electronAPI.minimizeWindow()
@@ -261,9 +272,13 @@ export function FloatingBar(): React.JSX.Element {
   return (
     <div className="w-full p-1">
       <div className="drag-region glass-bar rounded-2xl px-3 py-2.5 flex items-center gap-3">
+        {/* Medical Mode indicator */}
+        {config.medical?.enabled && (
+          <span className="text-blue-400 text-[10px]" title="Medical Mode: SOAP format + medical dictionary active">{'\u2695'}</span>
+        )}
         {/* Secure Mode indicator */}
         {config.secureMode && (
-          <span className="text-green-400 text-[10px]" title="Secure Mode: all processing is local">🔒</span>
+          <span className="text-green-400 text-[10px]" title="Secure Mode: all processing is local">{'\uD83D\uDD12'}</span>
         )}
         {/* Status */}
         <StatusIndicator status={status} />
@@ -396,24 +411,36 @@ export function FloatingBar(): React.JSX.Element {
       {showConsentPanel && (
         <div className="solid-panel rounded-2xl px-4 py-3 mt-1 no-drag space-y-2">
           <div className="flex items-center gap-2">
-            <span className="text-yellow-400 text-xs shrink-0">&#9888;</span>
-            <span className="text-white/70 text-xs font-medium">Recording Consent</span>
+            <span className={`text-xs shrink-0 ${config.medical?.enabled ? 'text-red-400' : 'text-yellow-400'}`}>
+              {config.medical?.enabled ? '\u2695' : '\u26A0'}
+            </span>
+            <span className="text-white/70 text-xs font-medium">
+              {config.medical?.enabled ? '\u8A3A\u7642\u9332\u97F3\u306E\u540C\u610F\u78BA\u8A8D' : 'Recording Consent'}
+            </span>
           </div>
           <p className="text-white/50 text-[11px] leading-relaxed">
-            {config.consent?.message || 'This meeting is being recorded and transcribed by AI.'}
+            {config.consent?.message || (config.medical?.enabled
+              ? '\u3053\u306E\u8A3A\u7642\u306F\u3001\u8A3A\u7642\u8A18\u9332\u4F5C\u6210\u306E\u305F\u3081\u306BAI\u306B\u3088\u308B\u9332\u97F3\u30FB\u6587\u5B57\u8D77\u3053\u3057\u3092\u884C\u3044\u307E\u3059\u3002\u97F3\u58F0\u30C7\u30FC\u30BF\u306F\u5916\u90E8\u306B\u9001\u4FE1\u3055\u308C\u305A\u3001\u3053\u306E\u7AEF\u672B\u5185\u3067\u306E\u307F\u51E6\u7406\u3055\u308C\u307E\u3059\u3002'
+              : 'This meeting is being recorded and transcribed by AI.'
+            )}
           </p>
+          {config.medical?.enabled && config.secureMode && (
+            <div className="rounded-lg px-2.5 py-1.5 bg-green-500/5 text-green-400/70 text-[10px] leading-relaxed">
+              \u30BB\u30AD\u30E5\u30A2\u30E2\u30FC\u30C9ON: \u5168\u3066\u306E\u30C7\u30FC\u30BF\u306F\u30ED\u30FC\u30AB\u30EB\u3067\u51E6\u7406\u3055\u308C\u3001\u5916\u90E8\u9001\u4FE1\u3055\u308C\u307E\u305B\u3093
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               onClick={handleConsentDismiss}
               className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 text-xs transition-colors"
             >
-              Cancel
+              {config.medical?.enabled ? '\u30AD\u30E3\u30F3\u30BB\u30EB' : 'Cancel'}
             </button>
             <button
               onClick={handleConsentAccept}
               className="flex-1 py-1.5 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 text-xs font-medium transition-colors border border-blue-500/20"
             >
-              Start Recording
+              {config.medical?.enabled ? '\u540C\u610F\u3057\u3066\u9332\u97F3\u958B\u59CB' : 'Start Recording'}
             </button>
           </div>
         </div>

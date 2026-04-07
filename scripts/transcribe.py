@@ -219,6 +219,7 @@ def main():
     parser.add_argument("--diarize", action="store_true", help="Enable speaker diarization")
     parser.add_argument("--hf-token", default=None, help="HuggingFace token for pyannote models")
     parser.add_argument("--num-speakers", type=int, default=None, help="Expected number of speakers")
+    parser.add_argument("--initial-prompt", default=None, help="Initial prompt with domain terms to improve recognition accuracy")
     parser.add_argument("--check-diarize", action="store_true", help="Check if diarization is available")
     args = parser.parse_args()
 
@@ -272,9 +273,7 @@ def main():
     model = WhisperModel(args.model, device=device, compute_type=compute_type)
 
     # Transcribe with enhanced settings
-    sys.stderr.write("Transcribing...\n")
-    segments_gen, info = model.transcribe(
-        str(audio_path),
+    transcribe_kwargs = dict(
         language=args.language if args.language != "auto" else None,
         beam_size=5,
         vad_filter=True,
@@ -284,6 +283,14 @@ def main():
         ),
         word_timestamps=True,  # Enable word-level timestamps for better quality
     )
+
+    # Medical dictionary: inject initial_prompt for domain-specific term recognition
+    if args.initial_prompt:
+        transcribe_kwargs["initial_prompt"] = args.initial_prompt
+        sys.stderr.write(f"Using initial_prompt with {len(args.initial_prompt)} chars of domain terms\n")
+
+    sys.stderr.write("Transcribing...\n")
+    segments_gen, info = model.transcribe(str(audio_path), **transcribe_kwargs)
 
     segments = []
     for segment in segments_gen:

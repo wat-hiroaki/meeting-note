@@ -55,7 +55,9 @@ const FORMAT_LABELS: Record<MeetingFormat, string> = {
   standup: 'Stand-up',
   team: 'Team Meeting',
   one_on_one: '1on1',
-  brainstorm: 'Brainstorm'
+  brainstorm: 'Brainstorm',
+  soap: 'Medical (SOAP)',
+  interview: 'Interview / Consultation'
 }
 
 function buildMarkdown(data: MeetingData, date: Date): string {

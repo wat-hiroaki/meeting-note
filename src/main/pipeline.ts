@@ -8,6 +8,7 @@ import { publishToSlack } from './publishers/slack'
 import { publishToRemote } from './publishers/remote'
 import { getConfig } from './config'
 import { addMeetingToHistory, generateMeetingId } from './meetings-history'
+import { writeAuditLog } from './audit-log'
 import type { MeetingData } from './publishers/markdown'
 import type { MeetingFormat } from '../shared/types'
 
@@ -71,7 +72,17 @@ export async function runPipeline(
   try {
     // Step 1: Transcribe
     sendProgress(win, 'transcribing', 10)
+    writeAuditLog('recording_stopped', {
+      audioPath,
+      startedAt: startedAt.toISOString(),
+      meetingFormat: options?.meetingFormat || 'auto',
+    })
     const transcript = await transcribe(audioPath)
+    writeAuditLog('transcription_completed', {
+      segments: transcript.segments.length,
+      duration: transcript.duration,
+      language: transcript.language,
+    })
     sendProgress(win, 'transcribing', 40)
 
     // Sanitize segments: filter out null/undefined text
@@ -115,6 +126,11 @@ export async function runPipeline(
       actionItems: summaryResult.actionItems,
       calendarEventTitle: options?.calendarEventTitle
     }
+
+    writeAuditLog('summary_generated', {
+      meetingFormat: summaryResult.meetingFormat,
+      actionItemCount: summaryResult.actionItems.length,
+    })
 
     // Step 3: Save markdown (critical — must succeed)
     sendProgress(win, 'saving', 75)
@@ -186,6 +202,7 @@ export async function runPipeline(
       }
     }
 
+    writeAuditLog('file_exported', { mdPath, notionPageId })
     sendProgress(win, 'done', 100)
     if (isWindowAlive(win)) {
       try {

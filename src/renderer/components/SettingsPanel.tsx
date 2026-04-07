@@ -167,8 +167,120 @@ export function SettingsPanel({ onClose }: SettingsPanelProps): React.JSX.Elemen
         </div>
       </div>
 
+      {/* Medical Mode */}
+      <Section title={'\u2695\uFE0F Medical Mode (\u81EA\u7531\u8A3A\u7642)'}>
+        <Toggle
+          checked={config.medical?.enabled || false}
+          onChange={(v) => {
+            const updates: Record<string, unknown> = {
+              medical: { ...config.medical, enabled: v }
+            }
+            if (v) {
+              // Auto-enable secure mode + consent + SOAP format
+              if (config.medical?.autoSecureMode) {
+                updates.secureMode = true
+                const safeTranscription = { ...config.transcription }
+                if (safeTranscription.mode === 'api') safeTranscription.mode = 'local'
+                const safeSummary = { ...config.summary }
+                if (['anthropic', 'openai', 'gemini'].includes(safeSummary.mode)) {
+                  safeSummary.mode = 'ollama'
+                }
+                safeSummary.meetingFormat = 'soap'
+                updates.transcription = safeTranscription
+                updates.summary = safeSummary
+              }
+              updates.consent = { ...config.consent, enabled: true }
+              if (!config.consent?.message || config.consent.message === 'This meeting is being recorded and transcribed by AI.') {
+                (updates.consent as Record<string, unknown>).message = '\u3053\u306E\u8A3A\u7642\u306F\u3001\u8A3A\u7642\u8A18\u9332\u4F5C\u6210\u306E\u305F\u3081\u306BAI\u306B\u3088\u308B\u9332\u97F3\u30FB\u6587\u5B57\u8D77\u3053\u3057\u3092\u884C\u3044\u307E\u3059\u3002\u97F3\u58F0\u30C7\u30FC\u30BF\u306F\u5916\u90E8\u306B\u9001\u4FE1\u3055\u308C\u305A\u3001\u3053\u306E\u7AEF\u672B\u5185\u3067\u306E\u307F\u51E6\u7406\u3055\u308C\u307E\u3059\u3002'
+              }
+            }
+            handleUpdate(updates)
+          }}
+          label={'\u533B\u7642\u30E2\u30FC\u30C9\u3092\u6709\u52B9\u5316'}
+        />
+        {config.medical?.enabled && (
+          <div className="space-y-2">
+            <div className="rounded-lg px-3 py-2 bg-blue-500/5 text-blue-300/70 text-[10px] leading-relaxed">
+              {'\u533B\u7642\u30E2\u30FC\u30C9ON: SOAP\u5F62\u5F0F\u3067\u51FA\u529B\u30FB\u533B\u7642\u7528\u8A9E\u8F9E\u66F8\u3067\u6587\u5B57\u8D77\u3053\u3057\u7CBE\u5EA6\u5411\u4E0A\u30FB\u540C\u610F\u78BA\u8A8D\u5FC5\u9808\u30FB\u76E3\u67FB\u30ED\u30B0\u8A18\u9332'}
+            </div>
+
+            {/* Specialty selection */}
+            <div className="space-y-1">
+              <label className="text-white/40 text-[10px]">{'\u8A3A\u7642\u79D1\uFF08\u8F9E\u66F8\u9078\u629E\uFF09'}</label>
+              <div className="grid grid-cols-2 gap-1">
+                {[
+                  { value: 'internal', label: '\u5185\u79D1' },
+                  { value: 'dermatology', label: '\u76AE\u819A\u79D1' },
+                  { value: 'orthopedics', label: '\u6574\u5F62\u5916\u79D1' },
+                  { value: 'ophthalmology', label: '\u773C\u79D1' },
+                  { value: 'dentistry', label: '\u6B6F\u79D1' },
+                  { value: 'psychiatry', label: '\u7CBE\u795E\u79D1' },
+                  { value: 'obstetrics', label: '\u7523\u5A66\u4EBA\u79D1' },
+                  { value: 'pediatrics', label: '\u5C0F\u5150\u79D1' },
+                  { value: 'cosmetic', label: '\u7F8E\u5BB9\u5916\u79D1' },
+                  { value: 'pain_clinic', label: '\u30DA\u30A4\u30F3\u30AF\u30EA\u30CB\u30C3\u30AF' },
+                  { value: 'rehabilitation', label: '\u30EA\u30CF\u30D3\u30EA' },
+                ].map(spec => {
+                  const selected = (config.medical?.specialties || ['general']).includes(spec.value as never)
+                  return (
+                    <button
+                      key={spec.value}
+                      onClick={() => {
+                        const current = config.medical?.specialties || ['general']
+                        const next = selected
+                          ? current.filter(s => s !== spec.value)
+                          : [...current, spec.value]
+                        handleUpdate({ medical: { ...config.medical, specialties: next.length > 0 ? next : ['general'] } })
+                      }}
+                      className={`px-2 py-1 rounded text-[10px] transition-all ${
+                        selected
+                          ? 'bg-blue-500/15 border border-blue-500/30 text-blue-300'
+                          : 'bg-white/[0.03] border border-transparent hover:bg-white/[0.06] text-white/50'
+                      }`}
+                    >
+                      {spec.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Custom terms */}
+            <div className="space-y-1">
+              <label className="text-white/40 text-[10px]">{'\u30AB\u30B9\u30BF\u30E0\u7528\u8A9E\uFF08\u8FFD\u52A0\uFF09'}</label>
+              <TextArea
+                value={(config.medical?.customTerms || []).join('\u3001')}
+                onChange={(v) => {
+                  const terms = v.split(/[、,\n]/).map(t => t.trim()).filter(Boolean)
+                  handleUpdate({ medical: { ...config.medical, customTerms: terms } })
+                }}
+                placeholder={'\u30A2\u30E0\u30ED\u30B8\u30D4\u30F3\u3001\u30D2\u30A2\u30EB\u30ED\u30F3\u9178\u6CE8\u5165\u3001PRP\u7642\u6CD5...'}
+                rows={2}
+              />
+            </div>
+
+            {/* Medical sub-options */}
+            <Toggle
+              checked={config.medical?.autoSecureMode !== false}
+              onChange={(v) => handleUpdate({ medical: { ...config.medical, autoSecureMode: v } })}
+              label={'\u30BB\u30AD\u30E5\u30A2\u30E2\u30FC\u30C9\u81EA\u52D5ON'}
+            />
+            <Toggle
+              checked={config.medical?.auditLog !== false}
+              onChange={(v) => handleUpdate({ medical: { ...config.medical, auditLog: v } })}
+              label={'\u76E3\u67FB\u30ED\u30B0\u8A18\u9332'}
+            />
+            <Toggle
+              checked={config.medical?.requireConsent !== false}
+              onChange={(v) => handleUpdate({ medical: { ...config.medical, requireConsent: v } })}
+              label={'\u9332\u97F3\u524D\u306E\u540C\u610F\u78BA\u8A8D\u5FC5\u9808'}
+            />
+          </div>
+        )}
+      </Section>
+
       {/* Secure Mode */}
-      <Section title="🔒 Secure Mode">
+      <Section title={'\uD83D\uDD12 Secure Mode'}>
         <Toggle
           checked={config.secureMode || false}
           onChange={(v) => {

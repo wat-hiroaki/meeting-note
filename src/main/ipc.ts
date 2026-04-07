@@ -8,6 +8,8 @@ import type { PipelineOptions } from './pipeline'
 import { getMeetingsHistory, getMeetingById, updateMeetingActionItem, searchMeetings } from './meetings-history'
 import { fetchUpcomingEvents, getNextMeeting } from './calendar'
 import { detectActiveMeeting } from './meeting-detector'
+import { writeAuditLog, readAuditLog } from './audit-log'
+import { getDictionaryInfo } from './medical-dictionary'
 import type { MeetingFormat, ActionItem } from '../shared/types'
 
 let currentAudioPath = ''
@@ -32,6 +34,10 @@ export function registerIpcHandlers(): void {
       calendarEventTitle: options?.calendarEventTitle,
       calendarEventId: options?.calendarEventId
     }
+    writeAuditLog('recording_started', {
+      meetingFormat: options?.meetingFormat || 'auto',
+      calendarEventTitle: options?.calendarEventTitle,
+    })
     console.log('[IPC] Recording started (Web Audio mode), format:', options?.meetingFormat || 'auto')
   })
 
@@ -307,6 +313,19 @@ export function registerIpcHandlers(): void {
   // ===== Meeting Detection =====
   ipcMain.handle('meeting:detect', () => {
     return detectActiveMeeting()
+  })
+
+  // ===== Medical =====
+  ipcMain.handle('medical:getDictionaries', () => {
+    return getDictionaryInfo()
+  })
+
+  ipcMain.handle('medical:getAuditLog', (_event, limit?: number) => {
+    return readAuditLog(limit || 100)
+  })
+
+  ipcMain.handle('medical:logConsent', (_event, action: 'consent_obtained' | 'consent_declined', details?: Record<string, unknown>) => {
+    writeAuditLog(action, details)
   })
 
   // Window mode switching

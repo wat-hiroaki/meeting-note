@@ -3,6 +3,13 @@ import { z } from 'zod'
 export const MeetingFormatSchema = z.enum(['auto', 'sales', 'standup', 'team', 'one_on_one', 'brainstorm', 'soap', 'interview']).default('auto')
 export type MeetingFormat = z.infer<typeof MeetingFormatSchema>
 
+export const MedicalSpecialtySchema = z.enum([
+  'general', 'internal', 'dermatology', 'orthopedics', 'ophthalmology',
+  'dentistry', 'psychiatry', 'obstetrics', 'pediatrics', 'cosmetic',
+  'pain_clinic', 'rehabilitation', 'custom'
+]).default('general')
+export type MedicalSpecialty = z.infer<typeof MedicalSpecialtySchema>
+
 export const ConfigSchema = z.object({
   secureMode: z.boolean().default(false),
 
@@ -93,9 +100,19 @@ export const ConfigSchema = z.object({
     autoPrompt: z.boolean().default(true)
   }).default({}),
 
+  medical: z.object({
+    enabled: z.boolean().default(false),
+    specialties: z.array(MedicalSpecialtySchema).default(['general']),
+    customTerms: z.array(z.string()).default([]),
+    autoSecureMode: z.boolean().default(true),
+    auditLog: z.boolean().default(true),
+    requireConsent: z.boolean().default(true),
+  }).default({}),
+
   consent: z.object({
     enabled: z.boolean().default(false),
-    message: z.string().default('This meeting is being recorded and transcribed by AI.')
+    message: z.string().default('This meeting is being recorded and transcribed by AI.'),
+    requireConfirmation: z.boolean().default(false),
   }).default({}),
 
   hotkeys: z.object({

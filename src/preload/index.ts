@@ -71,6 +71,14 @@ const api = {
   detectMeeting: (): Promise<DetectedMeeting | null> =>
     ipcRenderer.invoke('meeting:detect'),
 
+  // Medical
+  getMedicalDictionaries: (): Promise<Array<{ specialty: string; label: string; termCount: number }>> =>
+    ipcRenderer.invoke('medical:getDictionaries'),
+  getAuditLog: (limit?: number): Promise<Array<{ timestamp: string; action: string; details?: Record<string, unknown>; user?: string; sessionId: string }>> =>
+    ipcRenderer.invoke('medical:getAuditLog', limit),
+  logConsent: (action: 'consent_obtained' | 'consent_declined', details?: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke('medical:logConsent', action, details),
+
   // Window mode
   setWindowMode: (mode: 'bar' | 'onboarding' | 'settings' | 'expanded' | 'history'): Promise<void> => ipcRenderer.invoke('window:setMode', mode),
   platform: process.platform,

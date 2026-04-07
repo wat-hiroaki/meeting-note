@@ -3,6 +3,7 @@ import { join } from 'path'
 import { existsSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { getConfig } from './config'
+import { buildInitialPrompt } from './medical-dictionary'
 
 function getScriptPath(): string {
   if (is.dev) {
@@ -146,6 +147,17 @@ async function transcribeLocal(audioPath: string): Promise<TranscriptResult> {
       '--output', 'json',
       '--diarize'  // Always enable speaker diarization (falls back to simple detection)
     ]
+
+    // Inject medical dictionary as initial_prompt for improved term recognition
+    if (config.medical?.enabled) {
+      const prompt = buildInitialPrompt(
+        config.medical.specialties || ['general'],
+        config.medical.customTerms
+      )
+      if (prompt) {
+        args.push('--initial-prompt', prompt)
+      }
+    }
 
     const proc = spawn('python', args, {
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
@@ -407,6 +419,17 @@ async function transcribeAPI(audioPath: string): Promise<TranscriptResult> {
 
   if (config.transcription.language !== 'auto') {
     formData.append('language', config.transcription.language)
+  }
+
+  // Inject medical dictionary as prompt hint for improved term recognition
+  if (config.medical?.enabled) {
+    const prompt = buildInitialPrompt(
+      config.medical.specialties || ['general'],
+      config.medical.customTerms
+    )
+    if (prompt) {
+      formData.append('prompt', prompt)
+    }
   }
 
   const API_TIMEOUT_MS = 300_000 // 5 minutes for API transcription

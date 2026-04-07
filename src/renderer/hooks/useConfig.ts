@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface ConfigData {
+  secureMode: boolean
   recording: { micDevice: string }
   transcription: {
     mode: string
@@ -17,6 +18,7 @@ interface ConfigData {
     anthropic: { apiKey: string; model: string; maxTokens: number }
     openai: { apiKey: string; model: string }
     gemini: { apiKey: string; model: string }
+    ollama: { host: string; model: string }
   }
   output: { directory: string }
   notion: { enabled: boolean; apiKey: string; databaseId: string }
@@ -32,13 +34,23 @@ interface ConfigData {
     enabled: boolean
     autoPrompt: boolean
   }
+  medical: {
+    enabled: boolean
+    specialties: string[]
+    customTerms: string[]
+    autoSecureMode: boolean
+    auditLog: boolean
+    requireConsent: boolean
+  }
   consent: {
     enabled: boolean
     message: string
+    requireConfirmation: boolean
   }
 }
 
 const defaultConfig: ConfigData = {
+  secureMode: false,
   recording: { micDevice: 'default' },
   transcription: {
     mode: 'local',
@@ -54,7 +66,8 @@ const defaultConfig: ConfigData = {
     customInstructions: '',
     anthropic: { apiKey: '', model: 'claude-sonnet-4-20250514', maxTokens: 4096 },
     openai: { apiKey: '', model: 'gpt-4o' },
-    gemini: { apiKey: '', model: 'gemini-2.5-flash' }
+    gemini: { apiKey: '', model: 'gemini-2.5-flash' },
+    ollama: { host: 'http://localhost:11434', model: 'qwen2.5:14b' }
   },
   output: { directory: './meetings' },
   notion: { enabled: false, apiKey: '', databaseId: '' },
@@ -70,9 +83,18 @@ const defaultConfig: ConfigData = {
     enabled: true,
     autoPrompt: true
   },
+  medical: {
+    enabled: false,
+    specialties: ['general'],
+    customTerms: [],
+    autoSecureMode: true,
+    auditLog: true,
+    requireConsent: true,
+  },
   consent: {
     enabled: false,
-    message: 'This meeting is being recorded and transcribed by AI.'
+    message: 'This meeting is being recorded and transcribed by AI.',
+    requireConfirmation: false,
   }
 }
 
